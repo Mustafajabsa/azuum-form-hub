@@ -19,9 +19,9 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "11.52rem"; // Increased by 20% from 9.6rem
-const SIDEBAR_WIDTH_MOBILE = "12.96rem"; // Increased by 20% from 10.8rem
-const SIDEBAR_WIDTH_ICON = "3.6rem"; // Increased by 20% from 3rem
+const SIDEBAR_WIDTH = "9.8rem"; // Reduced by 15% from 11.52rem
+const SIDEBAR_WIDTH_MOBILE = "11rem"; // Reduced by 15% from 12.96rem
+const SIDEBAR_WIDTH_ICON = "3.06rem"; // Reduced by 15% from 3.6rem
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContext = {

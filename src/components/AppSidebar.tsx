@@ -5,10 +5,14 @@ import {
   Settings,
   HardDrive,
   LogOut,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "../hooks/use-auth";
 import { useNavigate } from "react-router-dom";
+import { useTheme } from "../hooks/use-theme";
 import {
   Sidebar,
   SidebarContent,
@@ -47,8 +51,16 @@ const menuItems = [
 export function AppSidebar() {
   const { open, setOpen } = useSidebar();
   const { logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const userRole = "admin"; // TODO: Replace with actual user role from context
   const navigate = useNavigate();
+
+  // Prevent hydration mismatch by only rendering on the client
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const toggleSidebar = () => {
     setOpen(!open);
@@ -122,8 +134,44 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
+      {/* Theme Toggle */}
+      <div className="p-2 border-t border-border">
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleTheme}
+                aria-label={
+                  isClient && theme === "dark"
+                    ? "Switch to light mode"
+                    : "Switch to dark mode"
+                }
+                className={`flex items-center gap-3 w-full px-3 py-2 rounded
+                  hover:bg-sidebar-accent hover:text-sidebar-primary
+                  transition-colors text-muted-foreground
+                  ${open ? "justify-start" : "justify-center"}
+                `}
+              >
+                {isClient && theme === "dark" ? (
+                  <Sun className="h-5 w-5 flex-shrink-0" />
+                ) : (
+                  <Moon className="h-5 w-5 flex-shrink-0" />
+                )}
+              </button>
+            </TooltipTrigger>
+            {!open && (
+              <TooltipContent side="right" sideOffset={10}>
+                <p>
+                  {isClient && theme === "dark" ? "Light Mode" : "Dark Mode"}
+                </p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
       {/* Logout Button */}
-      <div className="p-4 border-t border-border">
+      <div className="p-2 border-t border-border">
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>
