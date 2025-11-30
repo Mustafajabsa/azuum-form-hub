@@ -13,6 +13,8 @@ import {
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useTheme } from "@/hooks/use-theme";
+import { Moon, Sun } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 
@@ -61,6 +63,7 @@ const FilledForms = () => {
   const [selectedUser, setSelectedUser] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   // Export to Excel function
   const exportToExcel = (user: UserStats) => {
@@ -357,7 +360,7 @@ const FilledForms = () => {
             ← Back to Users
           </Button>
 
-          <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border dark:border-gray-700 p-6 mb-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between">
               <div className="flex items-center space-x-4 mb-4 md:mb-0">
                 <Avatar className="h-16 w-16">
@@ -408,7 +411,7 @@ const FilledForms = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border dark:border-gray-700 overflow-hidden">
             <div className="p-4 border-b flex justify-between items-center">
               <h3 className="text-lg font-medium">Forms</h3>
               <Button
@@ -421,8 +424,8 @@ const FilledForms = () => {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
                     <th
                       scope="col"
@@ -462,17 +465,17 @@ const FilledForms = () => {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {selectedUser.submissions.length > 0 ? (
                     selectedUser.submissions.map((submission, index) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
                             {submission.formTitle}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
                             {new Date(submission.createdAt).toLocaleString()}
                           </div>
                         </td>
@@ -480,12 +483,12 @@ const FilledForms = () => {
                           <span
                             className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                               submission.status === "Deployed"
-                                ? "bg-green-100 text-green-800"
+                                ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
                                 : submission.status === "Drafted"
-                                ? "bg-yellow-100 text-yellow-800"
+                                ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200"
                                 : submission.status === "Edited"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-gray-100 text-gray-800"
+                                ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+                                : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                             }`}
                           >
                             {submission.status}
@@ -507,7 +510,7 @@ const FilledForms = () => {
                                 state: { form: submission },
                               });
                             }}
-                            className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            className="text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300"
                           >
                             <Eye className="h-4 w-4 mr-1" />
                             View Form
@@ -539,7 +542,7 @@ const FilledForms = () => {
                     <tr>
                       <td
                         colSpan={6}
-                        className="px-6 py-4 text-center text-sm text-gray-500"
+                        className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400"
                       >
                         No forms found for this user.
                       </td>
@@ -556,20 +559,33 @@ const FilledForms = () => {
 
   // Show user list if no user is selected
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
       <PageHeader
         title="Filled Forms"
         description="View form submissions and user statistics"
-      />
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        >
+          {theme === "dark" ? (
+            <Sun className="h-5 w-5" />
+          ) : (
+            <Moon className="h-5 w-5" />
+          )}
+        </Button>
+      </PageHeader>
 
       <div className="p-6">
         {userStats.length === 0 ? (
           <div className="text-center py-12">
-            <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-            <h3 className="mt-2 text-sm font-medium text-foreground">
+            <FileText className="mx-auto h-12 w-12 text-muted-foreground dark:text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-foreground dark:text-white">
               No form submissions yet
             </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground dark:text-gray-400">
               Get started by creating and sharing a form.
             </p>
           </div>
@@ -590,7 +606,7 @@ const FilledForms = () => {
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <h3 className="text-lg font-semibold">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                           {user.user.name}
                         </h3>
                         <p className="text-sm text-muted-foreground">
@@ -606,7 +622,7 @@ const FilledForms = () => {
                   </div>
 
                   <div className="space-y-4 mt-4">
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Created Forms
@@ -615,7 +631,7 @@ const FilledForms = () => {
                           {user.formsSubmitted}
                         </p>
                       </div>
-                      <div className="h-12 w-px bg-gray-200"></div>
+                      <div className="h-12 w-px bg-gray-200 dark:bg-gray-600"></div>
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Assigned Forms

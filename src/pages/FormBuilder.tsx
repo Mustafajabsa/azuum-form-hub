@@ -3,8 +3,9 @@ import { DndProvider, useDrag, useDrop } from "react-dnd";
 import type { DropTargetMonitor } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { v4 as uuidv4 } from "uuid";
-import { Search } from "lucide-react";
+import { Search, Moon, Sun } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useTheme } from "@/hooks/use-theme";
 import {
   Type,
   Text,
@@ -429,9 +430,12 @@ interface FormBuilderState {
 export default function FormBuilder() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
   const [formTitle, setFormTitle] = useState("Untitled Form");
   const [formDescription, setFormDescription] = useState("");
   const [fields, setFields] = useState<FormField[]>([]);
+  const [panelWidth, setPanelWidth] = useState(350);
+  const [isResizing, setIsResizing] = useState(false);
   const moveField = useCallback((dragIndex: number, hoverIndex: number) => {
     setFields((prevFields) => {
       const newFields = [...prevFields];
@@ -465,9 +469,6 @@ export default function FormBuilder() {
   }, [location.state]);
   const [selectedField, setSelectedField] = useState<FormField | null>(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(320);
-  const [isResizing, setIsResizing] = useState(false);
-  // Removed sidebar related state and functions
 
   const addNewField = (fieldType: string) => {
     const fieldDef = FIELD_TYPES.find((f) => f.type === fieldType);
@@ -542,16 +543,18 @@ export default function FormBuilder() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="flex h-[90vh] max-h-[90vh] bg-gray-50 w-full overflow-hidden">
+      <div className="flex h-[90vh] max-h-[90vh] bg-gray-50 dark:bg-gray-900 w-full overflow-hidden">
         {/* Field properties panel */}
         {selectedField && (
           <div
-            className="relative bg-white border-r overflow-y-auto flex-shrink-0 flex flex-col"
+            className="relative bg-white dark:bg-gray-800 border-r dark:border-gray-700 overflow-y-auto flex-shrink-0 flex flex-col"
             style={{ width: `${panelWidth}px` }}
           >
-            <div className="p-4 border-b">
+            <div className="p-4 border-b dark:border-gray-700">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Field Properties</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Field Properties
+                </h2>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -600,7 +603,7 @@ export default function FormBuilder() {
 
             {/* Resize handle */}
             <div
-              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-200 active:bg-blue-400 transition-colors"
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-200 dark:hover:bg-blue-600 active:bg-blue-400 dark:active:bg-blue-500 transition-colors"
               onMouseDown={() => setIsResizing(true)}
             />
           </div>
@@ -614,31 +617,33 @@ export default function FormBuilder() {
             }`}
           >
             <div
-              className="bg-white rounded-lg shadow-sm border flex flex-col"
+              className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border dark:border-gray-700 flex flex-col`}
               style={{ minHeight: "calc(90vh - 2rem)" }}
             >
               {/* Form header */}
-              <div className="p-6 border-b space-y-4">
+              <div className="p-6 border-b dark:border-gray-700 space-y-4">
                 <div>
                   <Input
                     type="text"
                     value={formTitle}
                     onChange={(e) => setFormTitle(e.target.value)}
-                    className="text-2xl font-bold border-none shadow-none focus-visible:ring-0 p-0 mb-2"
+                    className="text-2xl font-bold border-none shadow-none focus-visible:ring-0 p-0 mb-2 bg-transparent dark:text-white"
                     placeholder="Form Title"
                   />
                   <Input
                     type="text"
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    className="text-muted-foreground border-none shadow-none focus-visible:ring-0 p-0"
+                    className="text-muted-foreground dark:text-gray-400 border-none shadow-none focus-visible:ring-0 p-0 bg-transparent"
                     placeholder="Form description (optional)"
                   />
                 </div>
                 <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">Assign to:</label>
+                  <label className="text-sm text-gray-600 dark:text-gray-300">
+                    Assign to:
+                  </label>
                   <select
-                    className="border rounded px-3 py-1 text-sm"
+                    className="border rounded px-3 py-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     onChange={(e) =>
                       console.log("Assigned to:", e.target.value)
                     }
@@ -687,7 +692,7 @@ export default function FormBuilder() {
               </div>
 
               {/* Add field button */}
-              <div className="p-4 border-t">
+              <div className="p-4 border-t dark:border-gray-700">
                 <Button
                   variant="outline"
                   className="w-full"
@@ -701,9 +706,25 @@ export default function FormBuilder() {
               {/* Field Selection Modal */}
               {showFieldModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <div className="absolute top-4 right-4">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleTheme}
+                        className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                      >
+                        {theme === "dark" ? (
+                          <Sun className="h-5 w-5" />
+                        ) : (
+                          <Moon className="h-5 w-5" />
+                        )}
+                      </Button>
+                    </div>
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-semibold">Add New Field</h3>
+                      <h3 className="text-lg font-semibold dark:text-white">
+                        Add New Field
+                      </h3>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -714,7 +735,7 @@ export default function FormBuilder() {
                     </div>
                     <div className="mb-4">
                       <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                         <Input
                           type="text"
                           placeholder="Search fields..."
@@ -739,23 +760,23 @@ export default function FormBuilder() {
                       ).map((field) => (
                         <div
                           key={field.type}
-                          className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer flex items-center space-x-3 transition-colors"
+                          className="p-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer flex items-center space-x-3 transition-colors"
                           onClick={() => {
                             addNewField(field.type);
                             setSearchQuery("");
                           }}
                         >
-                          <div className="p-2 bg-gray-100 rounded-md">
+                          <div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-md">
                             {field.icon}
                           </div>
                           <div>
-                            <div className="font-medium">
+                            <div className="font-medium dark:text-white">
                               {field.label}
-                              <span className="ml-2 text-xs font-normal text-gray-400">
+                              <span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-400">
                                 {field.type}
                               </span>
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-sm text-gray-500 dark:text-gray-400">
                               {field.group}
                             </div>
                           </div>
@@ -767,7 +788,7 @@ export default function FormBuilder() {
               )}
 
               {/* Action Buttons - Sticky at the bottom */}
-              <div className="sticky bottom-0 bg-white p-4 border-t space-y-2">
+              <div className="sticky bottom-0 bg-white dark:bg-gray-800 p-4 border-t dark:border-gray-700 space-y-2">
                 <div className="flex justify-between">
                   <Button variant="outline" className="flex-1 mr-2">
                     Save as Draft
