@@ -46,10 +46,12 @@ const Landing = () => {
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
       <div className="max-w-md w-full space-y-8">
         <div className="space-y-4 text-center">
-          <div className="w-20 h-20 bg-primary rounded-lg flex items-center justify-center mx-auto">
-            <span className="text-4xl font-bold text-primary-foreground">
-              A
-            </span>
+          <div className="flex justify-center">
+            <img
+              src="/logo.png"
+              alt="Azuum Logo"
+              className="w-20 h-20 object-contain"
+            />
           </div>
           <h1 className="text-4xl font-bold text-foreground">Azuum</h1>
           <p className="text-lg text-muted-foreground">

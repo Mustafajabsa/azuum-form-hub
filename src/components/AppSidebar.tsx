@@ -72,9 +72,11 @@ export function AppSidebar() {
             aria-label={open ? "Collapse sidebar" : "Expand sidebar"}
           >
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-                A
-              </div>
+              <img
+                src="/logo.png"
+                alt="Azuum Logo"
+                className="w-8 h-8 object-contain"
+              />
               {open && (
                 <span className="font-semibold text-foreground">Azuum</span>
               )}
