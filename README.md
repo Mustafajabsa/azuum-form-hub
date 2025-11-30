@@ -1,12 +1,10 @@
 # Azuum Form Hub
 
-A modern, drag-and-drop form builder application built with React, TypeScript, and shadcn/ui. Create beautiful, responsive forms with ease.
-
-![Form Builder Preview](public/screenshot.png)
+A modern form builder application built with React, TypeScript, and shadcn/ui. Create beautiful, responsive forms with ease.
 
 ## ✨ Features
 
-- 🎨 **Drag & Drop Form Builder** - Intuitive interface for building forms
+- 🎨 **Form Builder** - Intuitive interface for building forms
 - 📱 **Responsive Design** - Works seamlessly on all devices
 - 🛠 **Multiple Field Types** - Text, number, date, file uploads, and more
 - 👁 **Real-time Preview** - See your form as you build it
