@@ -281,7 +281,7 @@ Contributions are welcome! Please follow these steps:
 - [shadcn/ui](https://ui.shadcn.com/) for the beautiful component library
 - [Radix UI](https://www.radix-ui.com/) for accessible primitives
 - [Vite](https://vitejs.dev/) for the excellent build tooling
-- [React DnD](https://react-dnd.github.io/react-dnd/about) for drag and drop functionality
+- [React DnD](https://react-dnd.github.io/react-dnd/about) for drag and drop functionality => currently not used, but incase we need it in the future.
 
 ## 📬 Contact
 
