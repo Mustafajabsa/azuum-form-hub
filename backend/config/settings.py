@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     # Local apps
     'accounts',
     'forms',
+    'submissions',
 ]
 
 MIDDLEWARE = [
