@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'accounts',
     'forms',
     'submissions',
+    'storage',
 ]
 
 MIDDLEWARE = [
