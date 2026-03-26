@@ -43,11 +43,15 @@ INSTALLED_APPS = [
     'corsheaders',
     'drf_yasg',
     'django_filters',
+    'django_redis',
+    # 'django_ratelimit',  # Temporarily disabled due to cache backend issues
     # Local apps
     'accounts',
     'forms',
     'submissions',
     'storage',
+    'dashboard',
+    'advanced',
 ]
 
 MIDDLEWARE = [
@@ -165,6 +169,59 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Rate Limiting Configuration
+RATELIMIT_ENABLE = False  # Disable for now due to cache backend issues
+RATELIMIT_USE_CACHE = 'default'
+
+# Rate limit configurations for different endpoints
+RATELIMIT_VIEW = 'api.views.ratelimit'
+
+# Default rate limits (requests per hour)
+RATELIMIT_DEFAULT = '1000/h'
+
+# Specific rate limits for different user types
+RATELIMIT_ADMIN = '5000/h'  # Admin users
+RATELIMIT_PREMIUM = '2000/h'  # Premium users
+RATELIMIT_STANDARD = '1000/h'  # Standard users
+
+# Rate limits for specific endpoints
+RATELIMIT_AUTH = '10/m'  # Authentication endpoints
+RATELIMIT_UPLOAD = '50/h'  # File upload endpoints
+RATELIMIT_EXPORT = '20/h'  # Data export endpoints
+
+# Cache configuration for production
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'TIMEOUT': 60 * 60,  # 1 hour default
+    },
+    'sessions': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/2',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'TIMEOUT': 60 * 60 * 24,  # 24 hours for sessions
+    }
+}
+
+# Cache configuration for development (fallback)
+if DEBUG:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'default-cache',
+            'TIMEOUT': 60 * 30,  # 30 minutes
+        },
+        'sessions': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'sessions-cache',
+            'TIMEOUT': 60 * 60 * 24,  # 24 hours
+        }
+    }
+
 # Media files
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'

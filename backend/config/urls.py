@@ -23,17 +23,23 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from .swagger import schema_view
+from .api_info import api_info, rate_limit_status
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     # API Documentation
     path('api/docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('api/redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    # API Information
+    path('api/info/', api_info, name='api-info'),
+    path('api/rate-limit/', rate_limit_status, name='rate-limit-status'),
     # API Endpoints
     path('api/accounts/', include('accounts.urls')),
     path('api/forms/', include('forms.urls')),
     path('api/submissions/', include('submissions.urls')),
     path('api/storage/', include('storage.urls')),
+    path('api/dashboard/', include('dashboard.urls')),
+    path('api/advanced/', include('advanced.urls')),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

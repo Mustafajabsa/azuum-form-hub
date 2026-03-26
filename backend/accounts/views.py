@@ -4,11 +4,14 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
+from django_ratelimit.decorators import ratelimit
+from config.rate_limits import rate_limit_auth, get_client_ip
 from .models import User
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@rate_limit_auth(rate='10/m')
 def login_view(request):
     """Login endpoint"""
     email = request.data.get('email')

@@ -1,9 +1,11 @@
-from rest_framework import viewsets, status, permissions, views
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from django.db.models import Q, Sum
-from django.utils.decorators import method_decorator
+from django.http import JsonResponse
+from django_ratelimit.decorators import ratelimit
+from config.rate_limits import rate_limit_upload, rate_limit_standard
+from django.contrib.auth import get_user_model
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse
 from django.core.files.storage import default_storage
@@ -19,6 +21,7 @@ from .permissions import IsOwnerOrReadOnly
 
 
 @csrf_exempt
+@rate_limit_upload(rate='50/h')
 def file_upload_view(request):
     """Direct file upload endpoint"""
     if not request.FILES.get('file'):
