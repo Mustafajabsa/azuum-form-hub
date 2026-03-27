@@ -22,8 +22,34 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from drf_yasg.generators import OpenAPISchemaGenerator
+
 from .swagger import schema_view
 from .api_info import api_info, rate_limit_status
+from .health_checks import health_check, readiness_check, liveness_check, metrics_endpoint
+
+# Custom schema generator for better documentation
+class CustomSchemaGenerator(OpenAPISchemaGenerator):
+    def get_schema(self, request=None, public=True):
+        schema = super().get_schema(request, public)
+        return schema
+
+schema_view = get_schema_view(
+   openapi.Info(
+      title="Azuum Form Hub API",
+      default_version='v1',
+      description="Comprehensive form management and file storage API with advanced features",
+      terms_of_service="https://azuumformhub.com/terms/",
+      contact=openapi.Contact(email="support@azuumformhub.com"),
+      license=openapi.License(name="MIT License"),
+   ),
+   public=True,
+   generator_class=CustomSchemaGenerator,
+   permission_classes=(permissions.AllowAny,),
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -33,6 +59,11 @@ urlpatterns = [
     # API Information
     path('api/info/', api_info, name='api-info'),
     path('api/rate-limit/', rate_limit_status, name='rate-limit-status'),
+    # Health Checks
+    path('health/', health_check, name='health-check'),
+    path('health/ready/', readiness_check, name='readiness-check'),
+    path('health/live/', liveness_check, name='liveness-check'),
+    path('metrics/', metrics_endpoint, name='metrics-endpoint'),
     # API Endpoints
     path('api/accounts/', include('accounts.urls')),
     path('api/forms/', include('forms.urls')),
