@@ -5,41 +5,73 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, X } from "lucide-react";
 import { ContactForm } from "@/components/ContactForm";
+import { useAuth } from "@/hooks/use-auth";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const Landing = () => {
   const [activeTab, setActiveTab] = useState("login");
   const [showContact, setShowContact] = useState(false);
   const [hasWebsite, setHasWebsite] = useState(false);
+  const { login, register, isLoading } = useAuth();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     // Login form
-    username: "",
+    email: "",
     password: "",
 
     // Signup form
     fullName: "",
     organization: "",
     role: "",
-    email: "",
+    emailSignup: "",
     country: "",
     website: "",
   });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle login logic
-    console.log("Login attempt:", {
-      username: formData.username,
-      password: formData.password,
-    });
+
+    if (!formData.email || !formData.password) {
+      toast.error("Please enter both email and password");
+      return;
+    }
+
+    try {
+      await login(formData.email, formData.password);
+      toast.success("Login successful! Redirecting to dashboard...");
+
+      // Small delay to ensure authentication state is updated
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 100);
+    } catch (error: any) {
+      toast.error(error.message || "Login failed. Please try again.");
+    }
   };
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle signup logic
-    console.log("Signup data:", {
-      ...formData,
-      website: hasWebsite ? formData.website : undefined,
-    });
+
+    if (!formData.emailSignup || !formData.password) {
+      toast.error("Please enter email and password");
+      return;
+    }
+
+    try {
+      await register({
+        email: formData.emailSignup,
+        username: formData.emailSignup.split("@")[0], // Use email prefix as username
+        password: formData.password,
+        password_confirm: formData.password,
+        first_name: formData.fullName.split(" ")[0] || "",
+        last_name: formData.fullName.split(" ").slice(1).join(" ") || "",
+      });
+      toast.success("Account created successfully!");
+      navigate("/dashboard");
+    } catch (error: any) {
+      toast.error(error.message || "Registration failed. Please try again.");
+    }
   };
 
   return (
@@ -72,13 +104,14 @@ const Landing = () => {
           <TabsContent value="login">
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="username"
-                  placeholder="Enter your username"
-                  value={formData.username}
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={formData.email}
                   onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
+                    setFormData({ ...formData, email: e.target.value })
                   }
                   required
                 />
@@ -96,8 +129,12 @@ const Landing = () => {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full mt-4">
-                Login
+              <Button
+                type="submit"
+                className="w-full mt-4"
+                disabled={isLoading}
+              >
+                {isLoading ? "Logging in..." : "Login"}
               </Button>
             </form>
           </TabsContent>
@@ -149,9 +186,9 @@ const Landing = () => {
                   id="email"
                   type="email"
                   placeholder="you@example.com"
-                  value={formData.email}
+                  value={formData.emailSignup}
                   onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
+                    setFormData({ ...formData, emailSignup: e.target.value })
                   }
                   required
                 />
@@ -199,8 +236,12 @@ const Landing = () => {
                 </div>
               )}
 
-              <Button type="submit" className="w-full mt-4">
-                Create Account
+              <Button
+                type="submit"
+                className="w-full mt-4"
+                disabled={isLoading}
+              >
+                {isLoading ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
           </TabsContent>

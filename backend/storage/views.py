@@ -1,14 +1,18 @@
-from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from rest_framework import viewsets, permissions, status, generics
+from rest_framework.decorators import action, authentication_classes, permission_classes
 from rest_framework.response import Response
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django_ratelimit.decorators import ratelimit
 from config.rate_limits import rate_limit_upload, rate_limit_standard
 from django.contrib.auth import get_user_model
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
 from django.core.files.storage import default_storage
+from django.utils.decorators import method_decorator
 import mimetypes
 import os
 
@@ -20,59 +24,59 @@ from .serializers import (
 from .permissions import IsOwnerOrReadOnly
 
 
-@csrf_exempt
-@rate_limit_upload(rate='50/h')
-def file_upload_view(request):
-    """Direct file upload endpoint"""
-    if not request.FILES.get('file'):
-        return JsonResponse(
+class FileUploadView(generics.CreateAPIView):
+    """File upload view with proper authentication"""
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    
+    def post(self, request, *args, **kwargs):
+        """Handle file upload"""
+        if not request.FILES.get('file'):
+            return JsonResponse(
                 {'error': 'No file provided'}, 
                 status=400
             )
-    
-    uploaded_file = request.FILES['file']
-    folder_id = request.POST.get('folder_id')
-    
-    # Get or create folder
-    if folder_id:
-        folder = get_object_or_404(Folder, id=folder_id, owner=request.user)
-    else:
-        folder, _ = Folder.objects.get_or_create(
-                name='Root',
-                owner=request.user,
-                parent=None
-            )
-    
-    # Create file record
-    file_obj = File.objects.create(
-        name=uploaded_file.name,
-        original_name=uploaded_file.name,
-        file_path=uploaded_file,
-        file_size=uploaded_file.size,
-        mime_type=uploaded_file.content_type or 'application/octet-stream',
-        folder=folder,
-        owner=request.user
-    )
-    
-    # Log activity
-    UserActivity.objects.create(
-        user=request.user,
-        action='upload_file',
-        object_type='file',
-        object_id=file_obj.id,
-        details={
+        
+        uploaded_file = request.FILES['file']
+        folder_id = request.POST.get('folder_id')
+        
+        # Get or create folder
+        if folder_id:
+            folder = get_object_or_404(Folder, id=folder_id, owner=request.user)
+        else:
+            folder = None
+        
+        # Create file record
+        file_obj = File.objects.create(
+            name=uploaded_file.name,
+            original_name=uploaded_file.name,
+            file_path=uploaded_file,
+            file_size=uploaded_file.size,
+            mime_type=uploaded_file.content_type or 'application/octet-stream',
+            folder=folder,
+            owner=request.user
+        )
+        
+        # Log activity
+        UserActivity.objects.create(
+            user=request.user,
+            action='upload_file',
+            object_type='file',
+            object_id=file_obj.id,
+            details={
+                'name': file_obj.name,
+                'size': file_obj.file_size,
+                'mime_type': file_obj.mime_type
+            }
+        )
+        
+        return JsonResponse({
+            'id': str(file_obj.id),
             'name': file_obj.name,
             'size': file_obj.file_size,
-            'mime_type': file_obj.mime_type
-        }
-    )
-    
-    return JsonResponse({
-        'id': str(file_obj.id),
-        'name': file_obj.name,
-        'size': file_obj.file_size,
-        'message': 'File uploaded successfully'
-    })
+            'message': 'File uploaded successfully'
+        })
 
 
 class FolderViewSet(viewsets.ModelViewSet):
@@ -141,6 +145,84 @@ class FolderViewSet(viewsets.ModelViewSet):
         )
         
         return Response({'message': 'Folder moved successfully'})
+    
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Download folder as ZIP"""
+        folder = self.get_object()
+        
+        # Import zipfile for creating ZIP archive
+        import zipfile
+        import tempfile
+        from pathlib import Path
+        
+        # Log activity
+        UserActivity.objects.create(
+            user=request.user,
+            action='download_folder',
+            object_type='folder',
+            object_id=folder.id,
+            details={'name': folder.name}
+        )
+        
+        # Create temporary ZIP file
+        temp_file = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
+        temp_path = temp_file.name
+        
+        try:
+            with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # Add files from this folder and subfolders
+                def add_folder_to_zip(current_folder, zip_path=''):
+                    # Add files in current folder
+                    files = File.objects.filter(
+                        owner=request.user, 
+                        folder=current_folder, 
+                        is_deleted=False
+                    )
+                    
+                    for file in files:
+                        if file.file_path and os.path.exists(file.file_path.path):
+                            # Calculate relative path for ZIP
+                            file_zip_path = os.path.join(zip_path, file.name)
+                            zip_file.write(file.file_path.path, file_zip_path)
+                    
+                    # Recursively add subfolders
+                    subfolders = Folder.objects.filter(
+                        owner=request.user, 
+                        parent=current_folder
+                    )
+                    
+                    for subfolder in subfolders:
+                        subfolder_zip_path = os.path.join(zip_path, subfolder.name)
+                        add_folder_to_zip(subfolder, subfolder_zip_path)
+                
+                # Start with the current folder
+                folder_zip_path = folder.name
+                add_folder_to_zip(folder, folder_zip_path)
+            
+            # Read the ZIP file and return it
+            with open(temp_path, 'rb') as f:
+                zip_data = f.read()
+            
+            response = HttpResponse(
+                zip_data,
+                content_type='application/zip'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{folder.name}.zip"'
+            response['Content-Length'] = len(zip_data)
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error creating ZIP file: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
 
 
 class FileViewSet(viewsets.ModelViewSet):
@@ -211,6 +293,46 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': 'User not found'}, 
                 status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Download file"""
+        file_obj = self.get_object()
+        
+        # Check if file exists
+        if not file_obj.file_path or not os.path.exists(file_obj.file_path.path):
+            return Response(
+                {'error': 'File not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Log activity
+        UserActivity.objects.create(
+            user=request.user,
+            action='download_file',
+            object_type='file',
+            object_id=file_obj.id,
+            details={
+                'name': file_obj.name,
+                'size': file_obj.file_size
+            }
+        )
+        
+        # Return file response
+        try:
+            with open(file_obj.file_path.path, 'rb') as f:
+                response = HttpResponse(
+                    f.read(),
+                    content_type=file_obj.mime_type or 'application/octet-stream'
+                )
+                response['Content-Disposition'] = f'attachment; filename="{file_obj.name}"'
+                response['Content-Length'] = file_obj.file_size
+                return response
+        except Exception as e:
+            return Response(
+                {'error': f'Error reading file: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     @action(detail=True, methods=['post'])

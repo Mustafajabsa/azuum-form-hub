@@ -6,18 +6,27 @@ import {
   useEffect,
   createElement,
 } from "react";
+import {
+  apiService,
+  LoginRequest,
+  LoginResponseWithUser,
+} from "@/services/api";
 
-type User = {
-  email: string;
-  role: string;
-  // Add other user properties as needed
-};
+type User = NonNullable<LoginResponseWithUser["user"]>;
 
 type AuthContextType = {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  register: (userData: {
+    email: string;
+    username: string;
+    password: string;
+    password_confirm: string;
+    first_name?: string;
+    last_name?: string;
+  }) => Promise<LoginResponseWithUser>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,22 +37,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Check for existing session on initial load
   useEffect(() => {
-    // In a real app, you would check for an existing session/token here
-    // For demo purposes, we'll simulate a logged-in user
     const checkAuth = async () => {
       setIsLoading(true);
       try {
-        // Simulate API call to check auth status
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        const token = localStorage.getItem("access_token");
+        const refreshToken = localStorage.getItem("refresh_token");
 
-        // For demo, we'll set a mock user
-        // In a real app, you would verify the token and get user data
-        setUser({
-          email: "user@example.com",
-          role: "user",
-        });
+        if (token && refreshToken) {
+          console.log("🔑 Found tokens, validating...");
+          // Verify token and get user data
+          const userData = await apiService.getCurrentUser();
+          console.log("✅ User data loaded:", userData.email);
+          setUser(userData);
+        } else {
+          console.log("❌ No tokens found");
+          setUser(null);
+        }
       } catch (error) {
-        console.error("Auth check failed:", error);
+        console.error("❌ Auth check failed:", error);
+        // Clear invalid tokens
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user");
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -56,25 +71,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      // In a real app, you would make an API call to authenticate
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // For demo, we'll just set a mock user
-      setUser({
-        email,
-        role: "user",
-      });
+      console.log("🔐 Attempting login...");
+      const response = await apiService.login({ email, password });
+      console.log("✅ Login successful:", response.user?.email);
+      setUser(response.user);
     } catch (error) {
-      console.error("Login failed:", error);
+      console.error("❌ Login failed:", error);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const logout = () => {
-    // In a real app, you would clear the auth token
-    setUser(null);
+  const logout = async () => {
+    try {
+      await apiService.logout();
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      // Clear user state
+      setUser(null);
+      // Clear tokens from localStorage
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("user");
+    }
+  };
+
+  const register = async (userData: {
+    email: string;
+    username: string;
+    password: string;
+    password_confirm: string;
+    first_name?: string;
+    last_name?: string;
+  }) => {
+    try {
+      setIsLoading(true);
+      const response = await apiService.register(userData);
+      setUser(response.user);
+      return response;
+    } catch (error) {
+      console.error("Registration failed:", error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const value = {
@@ -82,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading,
     login,
     logout,
+    register,
   };
 
   return createElement(AuthContext.Provider, { value }, children);

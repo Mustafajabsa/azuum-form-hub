@@ -4,8 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/use-auth";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Landing from "./pages/Landing";
+import NewOrganization from "./pages/NewOrganization";
 import MainLayout from "./pages/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import Forms from "./pages/Forms";
@@ -15,6 +17,9 @@ import FilledForms from "./pages/FilledForms";
 import Settings from "./pages/Settings";
 import Storage from "./pages/Storage";
 import NotFound from "./pages/NotFound";
+import DebugLogin from "./pages/DebugLogin";
+// Import API test for development
+import "@/utils/api-test";
 
 const queryClient = new QueryClient();
 
@@ -26,20 +31,29 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public routes - accessible without authentication */}
             <Route path="/" element={<Index />} />
             <Route path="/landing" element={<Landing />} />
-            <Route element={<MainLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/storage" element={<Storage />} />
-              <Route path="/storage/:folderId" element={<Storage />} />
-              <Route path="/forms" element={<Forms />} />
-              <Route path="/forms/builder" element={<FormBuilder />} />
-              <Route path="/forms/preview" element={<FormPreview />} />
-              <Route path="/forms/filled" element={<FilledForms />} />
-              <Route path="/forms/user/:userId" element={<FilledForms />} />
-              <Route path="/filled-forms" element={<FilledForms />} />
-              <Route path="/settings" element={<Settings />} />
+            <Route path="/new-organization" element={<NewOrganization />} />
+            <Route path="/debug-login" element={<DebugLogin />} />
+
+            {/* Protected routes - require authentication */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<MainLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/storage" element={<Storage />} />
+                <Route path="/storage/:folderId" element={<Storage />} />
+                <Route path="/forms" element={<Forms />} />
+                <Route path="/forms/builder" element={<FormBuilder />} />
+                <Route path="/forms/preview" element={<FormPreview />} />
+                <Route path="/forms/filled" element={<FilledForms />} />
+                <Route path="/forms/user/:userId" element={<FilledForms />} />
+                <Route path="/filled-forms" element={<FilledForms />} />
+                <Route path="/settings" element={<Settings />} />
+              </Route>
             </Route>
+
+            {/* 404 page */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

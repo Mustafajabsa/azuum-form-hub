@@ -14,7 +14,7 @@ class FolderSerializer(serializers.ModelSerializer):
         model = Folder
         fields = ['id', 'name', 'description', 'parent', 'owner', 'created_at', 
                   'updated_at', 'file_count', 'total_size']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'owner']
     
     def get_file_count(self, obj):
         return obj.files.count()
@@ -41,7 +41,19 @@ class FileSerializer(serializers.ModelSerializer):
         return obj.owner.email if obj.owner else None
     
     def get_folder_name(self, obj):
-        return obj.folder.name if obj.folder else None
+        return obj.folder.name if obj.folder else "Root"
+    
+    def get_size_display(self, obj):
+        """Get human readable file size"""
+        if obj.file_size == 0:
+            return "0 B"
+        
+        size = obj.file_size
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024.0:
+                return f"{size:.1f} {unit}"
+            size /= 1024.0
+        return f"{size:.1f} TB"
     
     def validate(self, attrs):
         """Validate file size and type"""
