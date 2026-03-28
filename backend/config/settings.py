@@ -53,7 +53,6 @@ INSTALLED_APPS = [
     'storage',
     'dashboard',
     'advanced',
-    'security',
 ]
 
 MIDDLEWARE = [
