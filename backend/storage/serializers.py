@@ -14,7 +14,7 @@ class FolderSerializer(serializers.ModelSerializer):
         model = Folder
         fields = ['id', 'name', 'description', 'parent', 'owner', 'created_at', 
                   'updated_at', 'file_count', 'total_size']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'owner']
     
     def get_file_count(self, obj):
         return obj.files.count()
@@ -61,9 +61,15 @@ class FileCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create file with owner from request context"""
         validated_data['owner'] = self.context['request'].user
-        validated_data['original_name'] = validated_data['file_path'].name
-        validated_data['file_size'] = validated_data['file_path'].size
-        validated_data['mime_type'] = validated_data['file_path'].content_type
+        
+        # Handle file_path field properly
+        file_path = validated_data['file_path']
+        validated_data['original_name'] = file_path.name
+        validated_data['file_size'] = file_path.size
+        
+        # mime_type is already provided in the request, so don't override it
+        # validated_data['mime_type'] = file_path.content_type
+        
         return super().create(validated_data)
 
 

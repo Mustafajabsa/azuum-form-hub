@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import file_upload_view
+from .views import file_upload_view, folder_upload_view
 
 router = DefaultRouter()
 router.register(r'folders', views.FolderViewSet, basename='folder')
@@ -11,5 +11,6 @@ router.register(r'activities', views.UserActivityViewSet, basename='activity')
 
 urlpatterns = [
     path('upload/', file_upload_view, name='file-upload'),
+    path('upload-folder/', folder_upload_view, name='folder-upload'),
     path('', include(router.urls)),
 ]
