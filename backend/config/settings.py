@@ -21,10 +21,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-wy&0*j@8^x&2u$m+v3q+h79t52&tbaio+(e%^(xxsxl9t*__xr'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-wy&0*j@8^x&2u$m+v3q+h79t52&tbaio+(e%^(xxsxl9t*__xr')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'testserver']
 
@@ -38,15 +38,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Third party apps
+    'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
-    'corsheaders',
-    'drf_yasg',
-    'django_filters',
-    'django_redis',
-    # 'django_ratelimit',  # Temporarily disabled due to cache backend issues
-    # Local apps
+    'rest_framework_simplejwt.token_blacklist',
     'accounts',
     'forms',
     'submissions',
@@ -110,6 +105,9 @@ if os.environ.get('ENVIRONMENT') == 'production':
         'PORT': os.environ.get('DB_PORT', '5432'),
     })
 
+# File upload - single source of truth
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50MB - serializer must read this, not hardcode its own
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -159,6 +157,7 @@ AUTH_USER_MODEL = 'accounts.User'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',  # ADD - for management page
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -174,6 +173,10 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,       # ADD - invalidates old refresh tokens
+    'UPDATE_LAST_LOGIN': True,              # ADD - keeps last_login field accurate
+    'AUTH_HEADER_TYPES': ('Bearer',),       # ADD - make explicit
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
 # CORS Configuration
@@ -183,6 +186,16 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [                      # ADD - without this, JWT header gets blocked
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # Rate Limiting Configuration
 RATELIMIT_ENABLE = False  # Disable for now due to cache backend issues

@@ -1,7 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import file_upload_view, folder_upload_view
 
 router = DefaultRouter()
 router.register(r'folders', views.FolderViewSet, basename='folder')
@@ -10,7 +9,8 @@ router.register(r'shares', views.FileShareViewSet, basename='share')
 router.register(r'activities', views.UserActivityViewSet, basename='activity')
 
 urlpatterns = [
-    path('upload/', file_upload_view, name='file-upload'),
-    path('upload-folder/', folder_upload_view, name='folder-upload'),
+    # Unified upload endpoint — handles both flat files and folder trees
+    path('upload/', views.unified_upload_view, name='upload'),
+    # All ViewSet routes
     path('', include(router.urls)),
 ]
