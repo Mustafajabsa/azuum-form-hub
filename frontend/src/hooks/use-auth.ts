@@ -28,20 +28,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Check for existing session on initial load
   useEffect(() => {
-    // In a real app, you would check for an existing session/token here
-    // For demo purposes, we'll simulate a logged-in user
+    // Check for mock authentication
     const checkAuth = async () => {
       setIsLoading(true);
       try {
-        // Simulate API call to check auth status
+        // Simulate API delay
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // For demo, we'll set a mock user
-        // In a real app, you would verify the token and get user data
-        setUser({
-          email: "user@example.com",
-          role: "user",
-        });
+        // Check for stored mock user
+        const storedUser = localStorage.getItem("mock_user");
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+        } else {
+          // Set default mock user for demo
+          const mockUser = {
+            email: "user@example.com",
+            role: "user",
+          };
+          setUser(mockUser);
+          localStorage.setItem("mock_user", JSON.stringify(mockUser));
+        }
       } catch (error) {
         console.error("Auth check failed:", error);
         setUser(null);
@@ -56,14 +62,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      // In a real app, you would make an API call to authenticate
+      // Simulate API delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // For demo, we'll just set a mock user
-      setUser({
+      // Mock login - accept any credentials for demo
+      const mockUser = {
         email,
         role: "user",
-      });
+      };
+
+      setUser(mockUser);
+      localStorage.setItem("mock_user", JSON.stringify(mockUser));
+      localStorage.setItem("access_token", "mock-access-token");
+      localStorage.setItem("refresh_token", "mock-refresh-token");
     } catch (error) {
       console.error("Login failed:", error);
       throw error;
@@ -73,8 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    // In a real app, you would clear the auth token
+    // Clear mock authentication
     setUser(null);
+    localStorage.removeItem("mock_user");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
   };
 
   const value = {

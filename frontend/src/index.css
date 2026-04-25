@@ -47,6 +47,16 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 220 15% 20%;
     --sidebar-border: 220 10% 90%;
     --sidebar-ring: 215 100% 50%;
+
+    /* File type colors - matching file-companion exactly */
+    --folder: oklch(0.7 0.15 80);
+    --file-image: oklch(0.65 0.18 160);
+    --file-doc: oklch(0.6 0.18 240);
+    --file-code: oklch(0.6 0.2 300);
+    --file-video: oklch(0.62 0.22 20);
+    --file-audio: oklch(0.65 0.18 340);
+    --file-archive: oklch(0.6 0.12 60);
+    --selection: oklch(0.55 0.2 260 / 0.15);
   }
 }
 
