@@ -1,0 +1,5 @@
+Django==6.0.4
+djangorestframework
+drf-spectacular
+django-celery-beat
+djangorestframework-simplejwt
