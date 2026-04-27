@@ -2,6 +2,7 @@ from django.db import models
 import uuid
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
 
 # Create your models here.
 
@@ -16,6 +17,11 @@ class FileInfo(models.Model):
 
 # Sharable files token database model
 class SharedFile(models.Model):
+    created_by   = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True
+    )
     token        = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     file_path    = models.CharField(max_length=500)
     created_at   = models.DateTimeField(auto_now_add=True)

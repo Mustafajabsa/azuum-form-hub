@@ -4,6 +4,8 @@ import shutil
 import datetime
 import zipfile
 import io
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import serializers
@@ -47,6 +49,18 @@ class FileInfoViewSet(viewsets.ModelViewSet):
 """Base class"""
 class BaseFileAPIView(APIView):
     """Base class with shared utilities for all file manager views."""
+    authentication_classes = [JWTAuthentication]
+    permission_classes     = [IsAuthenticated]
+
+    def get_user_media_path(self, request):
+        """Build and return the user's isolated folder path."""
+        user_folder = os.path.join(
+            str(settings.FILE_MANAGER_ROOT),
+            'users',
+            str(request.user.id)
+        )
+        os.makedirs(user_folder, exist_ok=True)
+        return user_folder
 
     def sanitize_path(self, path):
         """Sanitize user provided path to prevent directory traversal attacks."""
@@ -59,10 +73,10 @@ class BaseFileAPIView(APIView):
             return None
         return path
 
-    def is_within_media_root(self, absolute_path):
-        """Final check — ensure path hasn't escaped FILE_MANAGER_ROOT."""
-        media_root = str(settings.FILE_MANAGER_ROOT)
-        return os.path.abspath(absolute_path).startswith(media_root)
+    def is_within_media_root(self, absolute_path, request):
+        """Final check — ensure path hasn't escaped the user's folder."""
+        user_path = self.get_user_media_path(request)
+        return os.path.abspath(absolute_path).startswith(user_path)
 
     def get_readable_size(self, size_bytes):
         """Convert bytes to human readable size."""
@@ -94,7 +108,7 @@ class FileManagerAPIView(BaseFileAPIView):
                     
                     files.append({
                         'filename': filename,
-                        'file_path': file_path.split(os.sep + 'media' + os.sep)[1],
+                        'file_path': os.path.relpath(file_path, directory_path),
                         'csv_text': csv_text,
                         'is_directory': False,
                         'size':         os.path.getsize(file_path),
@@ -137,166 +151,166 @@ class FileManagerAPIView(BaseFileAPIView):
         return directories
 
     @extend_schema(
-    summary='List, search, and sort directories and files',
-    description="""
-    Returns the full nested directory structure and the files inside the selected directory.
-    Supports searching by filename and sorting by different fields.
-    
-    **Listing files:**
-GET /api/files/?directory=invoices/2024
-    Returns all files inside invoices/2024 with the full nested directory tree.
-    
-    **Searching files:**
-GET /api/files/?query=sales
-GET /api/files/?query=sales&directory=invoices/2024
-    Filters files by filename within the selected directory. Case insensitive.
-    Examples:
-    - query=sales     → returns sales.csv, sales_final.csv
-    - query=.pdf      → returns all PDF files
-    - query=2024      → returns all files with 2024 in their name
-    
-    **Sorting files:**
-GET /api/files/?sort_by=name&order=asc
-GET /api/files/?sort_by=size&order=desc
-    Sorts the returned files by the specified field in ascending or descending order.
-    
-    **Combining all three:**
-GET /api/files/?directory=invoices&query=sales&sort_by=name&order=asc
-    Searches for files matching 'sales' inside invoices/ and returns them sorted by name ascending.
-    
-    **Sort fields available:**
-    - name     → sort alphabetically by filename
-    - size     → sort by file size in bytes
-    - created  → sort by creation date
-    - modified → sort by last modified date
-    
-    **Order values:**
-    - asc  → ascending  (A→Z, smallest→largest, oldest→newest)
-    - desc → descending (Z→A, largest→smallest, newest→oldest)
-    
-    If sort_by is provided without order, it defaults to ascending.
-    If order is provided without sort_by, it is ignored.
-    """,
-    parameters=[
-        OpenApiParameter(
-            name='directory',
-            type=OpenApiTypes.STR,
-            location=OpenApiParameter.QUERY,
-            description='Relative path of the directory to list files from. Leave empty for root media folder.',
-            required=False,
-            examples=[
-                OpenApiExample('Root', value=''),
-                OpenApiExample('Nested folder', value='invoices/2024'),
-            ]
-        ),
-        OpenApiParameter(
-            name='query',
-            type=OpenApiTypes.STR,
-            location=OpenApiParameter.QUERY,
-            description='Search term to filter files by filename. Case insensitive. Leave empty to return all files.',
-            required=False,
-            examples=[
-                OpenApiExample('Search by name',      value='sales'),
-                OpenApiExample('Search by extension', value='.pdf'),
-                OpenApiExample('Search by year',      value='2024'),
-            ]
-        ),
-        OpenApiParameter(
-            name='sort_by',
-            type=OpenApiTypes.STR,
-            location=OpenApiParameter.QUERY,
-            description="""
-            Field to sort files by. Available options:
+        summary='List, search, and sort directories and files',
+        description="""
+        Returns the full nested directory structure and the files inside the selected directory.
+        Supports searching by filename and sorting by different fields.
+        
+        **Listing files:**
+        GET /api/files/?directory=invoices/2024
+            Returns all files inside invoices/2024 with the full nested directory tree.
+            
+            **Searching files:**
+        GET /api/files/?query=sales
+        GET /api/files/?query=sales&directory=invoices/2024
+            Filters files by filename within the selected directory. Case insensitive.
+            Examples:
+            - query=sales     → returns sales.csv, sales_final.csv
+            - query=.pdf      → returns all PDF files
+            - query=2024      → returns all files with 2024 in their name
+            
+            **Sorting files:**
+        GET /api/files/?sort_by=name&order=asc
+        GET /api/files/?sort_by=size&order=desc
+            Sorts the returned files by the specified field in ascending or descending order.
+            
+            **Combining all three:**
+        GET /api/files/?directory=invoices&query=sales&sort_by=name&order=asc
+            Searches for files matching 'sales' inside invoices/ and returns them sorted by name ascending.
+            
+            **Sort fields available:**
             - name     → sort alphabetically by filename
             - size     → sort by file size in bytes
             - created  → sort by creation date
             - modified → sort by last modified date
-            """,
-            required=False,
-            enum=['name', 'size', 'created', 'modified'],
-            examples=[
-                OpenApiExample('Sort by name',          value='name'),
-                OpenApiExample('Sort by size',          value='size'),
-                OpenApiExample('Sort by created date',  value='created'),
-                OpenApiExample('Sort by modified date', value='modified'),
-            ]
-        ),
-        OpenApiParameter(
-            name='order',
-            type=OpenApiTypes.STR,
-            location=OpenApiParameter.QUERY,
-            description="""
-            Sort direction. Only applies when sort_by is provided.
+            
+            **Order values:**
             - asc  → ascending  (A→Z, smallest→largest, oldest→newest)
             - desc → descending (Z→A, largest→smallest, newest→oldest)
-            Defaults to asc if not provided.
+            
+            If sort_by is provided without order, it defaults to ascending.
+            If order is provided without sort_by, it is ignored.
             """,
-            required=False,
-            enum=['asc', 'desc'],
-            examples=[
-                OpenApiExample('Ascending',  value='asc'),
-                OpenApiExample('Descending', value='desc'),
-            ]
-        ),
-    ],
-    responses={
-        200: OpenApiResponse(
-            description="Files and directories returned successfully",
-            response={
-                'type': 'object',
-                'properties': {
-                    'directories': {
-                        'type': 'array',
-                        'description': 'Nested folder structure of the entire media directory',
-                        'items': {
-                            'type': 'object',
-                            'properties': {
-                                'id':          {'type': 'string',  'description': 'Unique ID for the folder'},
-                                'name':        {'type': 'string',  'description': 'Folder name'},
-                                'path':        {'type': 'string',  'description': 'Relative path from media root'},
-                                'directories': {'type': 'array',   'description': 'Nested subdirectories'}
+            parameters=[
+                OpenApiParameter(
+                    name='directory',
+                    type=OpenApiTypes.STR,
+                    location=OpenApiParameter.QUERY,
+                    description='Relative path of the directory to list files from. Leave empty for root media folder.',
+                    required=False,
+                    examples=[
+                        OpenApiExample('Root', value=''),
+                        OpenApiExample('Nested folder', value='invoices/2024'),
+                    ]
+                ),
+                OpenApiParameter(
+                    name='query',
+                    type=OpenApiTypes.STR,
+                    location=OpenApiParameter.QUERY,
+                    description='Search term to filter files by filename. Case insensitive. Leave empty to return all files.',
+                    required=False,
+                    examples=[
+                        OpenApiExample('Search by name',      value='sales'),
+                        OpenApiExample('Search by extension', value='.pdf'),
+                        OpenApiExample('Search by year',      value='2024'),
+                    ]
+                ),
+                OpenApiParameter(
+                    name='sort_by',
+                    type=OpenApiTypes.STR,
+                    location=OpenApiParameter.QUERY,
+                    description="""
+                    Field to sort files by. Available options:
+                    - name     → sort alphabetically by filename
+                    - size     → sort by file size in bytes
+                    - created  → sort by creation date
+                    - modified → sort by last modified date
+                    """,
+                    required=False,
+                    enum=['name', 'size', 'created', 'modified'],
+                    examples=[
+                        OpenApiExample('Sort by name',          value='name'),
+                        OpenApiExample('Sort by size',          value='size'),
+                        OpenApiExample('Sort by created date',  value='created'),
+                        OpenApiExample('Sort by modified date', value='modified'),
+                    ]
+                ),
+                OpenApiParameter(
+                    name='order',
+                    type=OpenApiTypes.STR,
+                    location=OpenApiParameter.QUERY,
+                    description="""
+                    Sort direction. Only applies when sort_by is provided.
+                    - asc  → ascending  (A→Z, smallest→largest, oldest→newest)
+                    - desc → descending (Z→A, largest→smallest, newest→oldest)
+                    Defaults to asc if not provided.
+                    """,
+                    required=False,
+                    enum=['asc', 'desc'],
+                    examples=[
+                        OpenApiExample('Ascending',  value='asc'),
+                        OpenApiExample('Descending', value='desc'),
+                    ]
+                ),
+            ],
+            responses={
+                200: OpenApiResponse(
+                    description="Files and directories returned successfully",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'directories': {
+                                'type': 'array',
+                                'description': 'Nested folder structure of the entire media directory',
+                                'items': {
+                                    'type': 'object',
+                                    'properties': {
+                                        'id':          {'type': 'string',  'description': 'Unique ID for the folder'},
+                                        'name':        {'type': 'string',  'description': 'Folder name'},
+                                        'path':        {'type': 'string',  'description': 'Relative path from media root'},
+                                        'directories': {'type': 'array',   'description': 'Nested subdirectories'}
+                                    }
+                                }
+                            },
+                            'files': {
+                                'type': 'array',
+                                'description': 'Files inside the selected directory, filtered by query and sorted by sort_by if provided',
+                                'items': {
+                                    'type': 'object',
+                                    'properties': {
+                                        'filename':     {'type': 'string',  'description': 'Name of the file'},
+                                        'file_path':    {'type': 'string',  'description': 'Relative path from media root'},
+                                        'csv_text':     {'type': 'string',  'description': 'CSV content as plain text, empty if not a CSV'},
+                                        'is_directory': {'type': 'boolean', 'description': 'Always false for files'}
+                                    }
+                                }
+                            },
+                            'selected_directory': {
+                                'type': 'string',
+                                'description': 'The directory path that was passed in the request'
+                            },
+                            'query': {
+                                'type': 'string',
+                                'description': 'The search term that was passed in the request. Empty string if no search was performed.'
+                            },
+                            'sort_by': {
+                                'type': 'string',
+                                'description': 'The sort field that was applied. Empty string if no sorting was performed.',
+                                'example': 'name'
+                            },
+                            'order': {
+                                'type': 'string',
+                                'description': 'The sort direction that was applied.',
+                                'example': 'asc'
                             }
                         }
-                    },
-                    'files': {
-                        'type': 'array',
-                        'description': 'Files inside the selected directory, filtered by query and sorted by sort_by if provided',
-                        'items': {
-                            'type': 'object',
-                            'properties': {
-                                'filename':     {'type': 'string',  'description': 'Name of the file'},
-                                'file_path':    {'type': 'string',  'description': 'Relative path from media root'},
-                                'csv_text':     {'type': 'string',  'description': 'CSV content as plain text, empty if not a CSV'},
-                                'is_directory': {'type': 'boolean', 'description': 'Always false for files'}
-                            }
-                        }
-                    },
-                    'selected_directory': {
-                        'type': 'string',
-                        'description': 'The directory path that was passed in the request'
-                    },
-                    'query': {
-                        'type': 'string',
-                        'description': 'The search term that was passed in the request. Empty string if no search was performed.'
-                    },
-                    'sort_by': {
-                        'type': 'string',
-                        'description': 'The sort field that was applied. Empty string if no sorting was performed.',
-                        'example': 'name'
-                    },
-                    'order': {
-                        'type': 'string',
-                        'description': 'The sort direction that was applied.',
-                        'example': 'asc'
                     }
-                }
+                )
             }
         )
-    }
-)
     def get(self, request):
         """List directories and files."""
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         directory = request.query_params.get('directory', '')
         query      = request.query_params.get('query', '')
         directory = self.sanitize_path(directory) or ''
@@ -372,7 +386,7 @@ GET /api/files/?directory=invoices&query=sales&sort_by=name&order=asc
     )
     def post(self, request):
         """Upload a file."""
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         directory = request.POST.get('directory', '')
         selected_directory_path = os.path.join(media_path, directory)
         
@@ -429,7 +443,7 @@ class FileDeleteAPIView(BaseFileAPIView):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         absolute_file_path = os.path.join(media_path, path)
         try:
             if os.path.isfile(absolute_file_path):
@@ -481,7 +495,7 @@ class FolderCreateAPIView(BaseFileAPIView):
         """Create a folder."""
         folder_name = request.data.get('folder_name')
         parent_directory = request.data.get('directory', '')
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         
         if not folder_name:
             return Response(
@@ -530,7 +544,7 @@ class FileDownloadAPIView(BaseFileAPIView):
         """Download a file."""
         from django.http import FileResponse
         path = file_path.replace('%slash%', '/')
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         absolute_file_path = os.path.join(media_path, path)
         
         if os.path.exists(absolute_file_path):
@@ -564,7 +578,7 @@ class FileViewAPIView(BaseFileAPIView):
         """Serve file content for viewing."""
         from django.http import FileResponse
         path = file_path.replace('%slash%', '/')
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         absolute_file_path = os.path.join(media_path, path)
         
         if os.path.exists(absolute_file_path):
@@ -659,168 +673,168 @@ class FolderUploadAPIView(BaseFileAPIView):
     """Upload a folder with its full structure."""
 
     @extend_schema(
-    summary="Upload a folder",
-    description="""
-    Uploads multiple files while preserving their full folder structure.
-    
-    **How it works:**
-    Each file must be paired with its relative path that includes the full folder structure AND the filename.
-    The backend will automatically create all necessary folders and save each file in its correct location.
-    
-    **Important:** The relative_paths value must always include the filename at the end, not just the folder name.
-    
-    **Example — Uploading an invoices folder:**
-    
-    Imagine you have this folder structure on your machine:
-invoices/
-    2024/
-        sales.csv
-        report.pdf
-    2025/
-        january.csv
-    
-    You would send:
-files[0]          = sales.csv        relative_paths[0] = invoices/2024/sales.csv
-files[1]          = report.pdf       relative_paths[1] = invoices/2024/report.pdf
-files[2]          = january.csv      relative_paths[2] = invoices/2025/january.csv
-    
-    This will recreate the exact same structure inside FILE_MANAGER_ROOT:
-FILE_MANAGER_ROOT/
-    invoices/
-        2024/
-            sales.csv
-            report.pdf
-        2025/
-            january.csv
-    
-    **Common mistake — wrong vs correct relative_paths:**
-WRONG:   relative_paths = invoices/2024          (missing filename — saves a file named '2024' with no extension)
-CORRECT: relative_paths = invoices/2024/sales.csv (includes filename — saves sales.csv inside invoices/2024/)
-    
-    **Using the directory field:**
-    If you want to upload the folder into an existing directory, use the directory field.
-    For example, if directory = projects, the result will be:
-FILE_MANAGER_ROOT/
-    projects/
+        summary="Upload a folder",
+        description="""
+        Uploads multiple files while preserving their full folder structure.
+        
+        **How it works:**
+        Each file must be paired with its relative path that includes the full folder structure AND the filename.
+        The backend will automatically create all necessary folders and save each file in its correct location.
+        
+        **Important:** The relative_paths value must always include the filename at the end, not just the folder name.
+        
+        **Example — Uploading an invoices folder:**
+        
+        Imagine you have this folder structure on your machine:
         invoices/
             2024/
                 sales.csv
-    Leave directory empty to upload directly into the media root.
-    """,
-    parameters=[
-        OpenApiParameter(
-            name='files',
-            type={'type': 'array', 'items': {'type': 'string', 'format': 'binary'}},
-            location=OpenApiParameter.QUERY,
-            description='List of files to upload. Each file must have a corresponding entry in relative_paths.',
-            required=True,
-        ),
-        OpenApiParameter(
-            name='relative_paths',
-            type={'type': 'array', 'items': {'type': 'string'}},
-            location=OpenApiParameter.QUERY,
-            description="""
-            Relative path for each file INCLUDING the filename.
-            Must match the order of the files list exactly.
-            Examples:
-              - invoices/2024/sales.csv
-              - invoices/2024/report.pdf
-              - invoices/2025/january.csv
+                report.pdf
+            2025/
+                january.csv
+            
+            You would send:
+        files[0]          = sales.csv        relative_paths[0] = invoices/2024/sales.csv
+        files[1]          = report.pdf       relative_paths[1] = invoices/2024/report.pdf
+        files[2]          = january.csv      relative_paths[2] = invoices/2025/january.csv
+            
+            This will recreate the exact same structure inside FILE_MANAGER_ROOT:
+        FILE_MANAGER_ROOT/
+            invoices/
+                2024/
+                    sales.csv
+                    report.pdf
+                2025/
+                    january.csv
+            
+            **Common mistake — wrong vs correct relative_paths:**
+        WRONG:   relative_paths = invoices/2024          (missing filename — saves a file named '2024' with no extension)
+        CORRECT: relative_paths = invoices/2024/sales.csv (includes filename — saves sales.csv inside invoices/2024/)
+            
+            **Using the directory field:**
+            If you want to upload the folder into an existing directory, use the directory field.
+            For example, if directory = projects, the result will be:
+        FILE_MANAGER_ROOT/
+            projects/
+                invoices/
+                    2024/
+                        sales.csv
+            Leave directory empty to upload directly into the media root.
             """,
-            required=True,
-            examples=[
-                OpenApiExample(
-                    'Single file in folder',
-                    value='invoices/2024/sales.csv'
+            parameters=[
+                OpenApiParameter(
+                    name='files',
+                    type={'type': 'array', 'items': {'type': 'string', 'format': 'binary'}},
+                    location=OpenApiParameter.QUERY,
+                    description='List of files to upload. Each file must have a corresponding entry in relative_paths.',
+                    required=True,
                 ),
-                OpenApiExample(
-                    'Nested folder structure',
-                    value='invoices/2024/reports/annual.pdf'
+                OpenApiParameter(
+                    name='relative_paths',
+                    type={'type': 'array', 'items': {'type': 'string'}},
+                    location=OpenApiParameter.QUERY,
+                    description="""
+                    Relative path for each file INCLUDING the filename.
+                    Must match the order of the files list exactly.
+                    Examples:
+                    - invoices/2024/sales.csv
+                    - invoices/2024/report.pdf
+                    - invoices/2025/january.csv
+                    """,
+                    required=True,
+                    examples=[
+                        OpenApiExample(
+                            'Single file in folder',
+                            value='invoices/2024/sales.csv'
+                        ),
+                        OpenApiExample(
+                            'Nested folder structure',
+                            value='invoices/2024/reports/annual.pdf'
+                        ),
+                    ]
                 ),
-            ]
-        ),
-        OpenApiParameter(
-            name='directory',
-            type=OpenApiTypes.STR,
-            location=OpenApiParameter.QUERY,
-            description='Optional base directory to upload into. Leave empty to upload into media root.',
-            required=False,
-            examples=[
-                OpenApiExample('Empty — upload to media root', value=''),
-                OpenApiExample('Upload into existing folder', value='projects'),
-            ]
-        ),
-    ],
-    request={
-        'multipart/form-data': {
-            'type': 'object',
-            'properties': {
-                'files': {
-                    'type': 'array',
-                    'items': {'type': 'string', 'format': 'binary'},
-                    'description': 'List of files to upload'
-                },
-                'relative_paths': {
-                    'type': 'array',
-                    'items': {'type': 'string'},
-                    'description': 'Full relative path for each file including filename. Example: invoices/2024/sales.csv'
-                },
-                'directory': {
-                    'type': 'string',
-                    'description': 'Optional base directory. Leave empty for media root.'
+                OpenApiParameter(
+                    name='directory',
+                    type=OpenApiTypes.STR,
+                    location=OpenApiParameter.QUERY,
+                    description='Optional base directory to upload into. Leave empty to upload into media root.',
+                    required=False,
+                    examples=[
+                        OpenApiExample('Empty — upload to media root', value=''),
+                        OpenApiExample('Upload into existing folder', value='projects'),
+                    ]
+                ),
+            ],
+            request={
+                'multipart/form-data': {
+                    'type': 'object',
+                    'properties': {
+                        'files': {
+                            'type': 'array',
+                            'items': {'type': 'string', 'format': 'binary'},
+                            'description': 'List of files to upload'
+                        },
+                        'relative_paths': {
+                            'type': 'array',
+                            'items': {'type': 'string'},
+                            'description': 'Full relative path for each file including filename. Example: invoices/2024/sales.csv'
+                        },
+                        'directory': {
+                            'type': 'string',
+                            'description': 'Optional base directory. Leave empty for media root.'
+                        }
+                    },
+                    'required': ['files', 'relative_paths']
                 }
             },
-            'required': ['files', 'relative_paths']
-        }
-    },
-    responses={
-        201: OpenApiResponse(
-            description="Files uploaded successfully",
-            response={
-                'type': 'object',
-                'properties': {
-                    'message':  {'type': 'string', 'example': '3 file(s) uploaded successfully'},
-                    'uploaded': {
-                        'type': 'array',
-                        'items': {'type': 'string'},
-                        'example': [
-                            'invoices/2024/sales.csv',
-                            'invoices/2024/report.pdf',
-                            'invoices/2025/january.csv'
-                        ],
-                        'description': 'List of successfully uploaded file paths'
-                    },
-                    'failed': {
-                        'type': 'array',
-                        'items': {
-                            'type': 'object',
-                            'properties': {
-                                'path':  {'type': 'string'},
-                                'error': {'type': 'string'}
+            responses={
+                201: OpenApiResponse(
+                    description="Files uploaded successfully",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'message':  {'type': 'string', 'example': '3 file(s) uploaded successfully'},
+                            'uploaded': {
+                                'type': 'array',
+                                'items': {'type': 'string'},
+                                'example': [
+                                    'invoices/2024/sales.csv',
+                                    'invoices/2024/report.pdf',
+                                    'invoices/2025/january.csv'
+                                ],
+                                'description': 'List of successfully uploaded file paths'
+                            },
+                            'failed': {
+                                'type': 'array',
+                                'items': {
+                                    'type': 'object',
+                                    'properties': {
+                                        'path':  {'type': 'string'},
+                                        'error': {'type': 'string'}
+                                    }
+                                },
+                                'description': 'List of files that failed with their error messages'
                             }
-                        },
-                        'description': 'List of files that failed with their error messages'
+                        }
                     }
-                }
-            }
-        ),
-        400: OpenApiResponse(
-            description="Bad request",
-            response={
-                'type': 'object',
-                'properties': {
-                    'error': {
-                        'type': 'string',
-                        'example': 'Each file must have a corresponding relative path'
+                ),
+                400: OpenApiResponse(
+                    description="Bad request",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'error': {
+                                'type': 'string',
+                                'example': 'Each file must have a corresponding relative path'
+                            }
+                        }
                     }
-                }
+                )
             }
         )
-    }
-)
     def post(self, request):
         """Upload a folder structure."""
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         directory = request.POST.get('directory', '')
         base_path = os.path.join(media_path, directory)
 
@@ -975,7 +989,7 @@ class FileMoveAPIView(BaseFileAPIView):
     )
     def patch(self, request):
         """Move a file or folder."""
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         source_path      = self.sanitize_path(request.data.get('source_path'))
         destination_path = self.sanitize_path(request.data.get('destination_path'))
 
@@ -1037,126 +1051,182 @@ class FileRenameAPIView(BaseFileAPIView):
         The file/folder stays in the same location — only its name changes.
         
         **Example — Renaming a file:**
-    path     = invoices/2024/sales.csv
-    new_name = sales_final.csv
-        Result:
-    BEFORE:                          AFTER:
-    FILE_MANAGER_ROOT/                      FILE_MANAGER_ROOT/
-        invoices/                        invoices/
-            2024/                            2024/
-                sales.csv    ──────►              sales_final.csv
-        
-        **Example — Renaming a folder:**
-    path     = invoices/2024
-    new_name = 2024_archived
-        Result:
-    BEFORE:                          AFTER:
-    FILE_MANAGER_ROOT/                      FILE_MANAGER_ROOT/
-        invoices/                        invoices/
-            2024/                            2024_archived/
-                sales.csv    ──────►              sales.csv
-                report.pdf                        report.pdf
-        
-        **Important notes:**
-        - Only provide the new name, not the full path.
-        - The file/folder stays in the same directory.
-        - If a file/folder with the new name already exists in the same directory, it will be overwritten.
-        
-        **Wrong vs Correct:**
-    WRONG:   new_name = invoices/2024/sales_final.csv  (do not include the path)
-    CORRECT: new_name = sales_final.csv                (just the new name)
-        """,
-        request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'path': {
-                        'type': 'string',
-                        'description': 'Relative path of the file or folder to rename.',
-                        'example': 'invoices/2024/sales.csv'
-                    },
-                    'new_name': {
-                        'type': 'string',
-                        'description': 'The new name for the file or folder. Do not include the path — just the name.',
-                        'example': 'sales_final.csv'
-                    }
-                },
-                'required': ['path', 'new_name']
-            }
-        },
-        responses={
-            200: OpenApiResponse(
-                description="File or folder renamed successfully",
-                response={
+        path     = invoices/2024/sales.csv
+        new_name = sales_final.csv
+            Result:
+        BEFORE:                          AFTER:
+        FILE_MANAGER_ROOT/                      FILE_MANAGER_ROOT/
+            invoices/                        invoices/
+                2024/                            2024/
+                    sales.csv    ──────►              sales_final.csv
+            
+            **Example — Renaming a folder:**
+        path     = invoices/2024
+        new_name = 2024_archived
+            Result:
+        BEFORE:                          AFTER:
+        FILE_MANAGER_ROOT/                      FILE_MANAGER_ROOT/
+            invoices/                        invoices/
+                2024/                            2024_archived/
+                    sales.csv    ──────►              sales.csv
+                    report.pdf                        report.pdf
+            
+            **Important notes:**
+            - Only provide the new name, not the full path.
+            - The file/folder stays in the same directory.
+            - If a file/folder with the new name already exists in the same directory, it will be overwritten.
+            
+            **Wrong vs Correct:**
+        WRONG:   new_name = invoices/2024/sales_final.csv  (do not include the path)
+        CORRECT: new_name = sales_final.csv                (just the new name)
+            """,
+            request={
+                'application/json': {
                     'type': 'object',
                     'properties': {
-                        'message': {
+                        'path': {
                             'type': 'string',
-                            'example': 'Successfully renamed sales.csv to sales_final.csv'
+                            'description': 'Relative path of the file or folder to rename.',
+                            'example': 'invoices/2024/sales.csv'
                         },
-                        'old_path': {'type': 'string', 'example': 'invoices/2024/sales.csv'},
-                        'new_path': {'type': 'string', 'example': 'invoices/2024/sales_final.csv'}
-                    }
+                        'new_name': {
+                            'type': 'string',
+                            'description': 'The new name for the file or folder. Do not include the path — just the name.',
+                            'example': 'sales_final.csv'
+                        }
+                    },
+                    'required': ['path', 'new_name']
                 }
-            ),
-            400: OpenApiResponse(
-                description="Missing fields, invalid new name, or error during rename",
-                response={
-                    'type': 'object',
-                    'properties': {
-                        'error': {'type': 'string', 'example': 'path and new_name are required'}
+            },
+            responses={
+                200: OpenApiResponse(
+                    description="File or folder renamed successfully",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'message': {
+                                'type': 'string',
+                                'example': 'Successfully renamed sales.csv to sales_final.csv'
+                            },
+                            'old_path': {'type': 'string', 'example': 'invoices/2024/sales.csv'},
+                            'new_path': {'type': 'string', 'example': 'invoices/2024/sales_final.csv'}
+                        }
                     }
-                }
-            ),
-            404: OpenApiResponse(
-                description="File or folder not found",
-                response={
-                    'type': 'object',
-                    'properties': {
-                        'error': {'type': 'string', 'example': 'Path does not exist'}
+                ),
+                400: OpenApiResponse(
+                    description="Missing fields, invalid new name, or error during rename",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'error': {'type': 'string', 'example': 'path and new_name are required'}
+                        }
                     }
-                }
-            ),
-            409: OpenApiResponse(
-                description="A file or folder with the new name already exists",
-                response={
-                    'type': 'object',
-                    'properties': {
-                        'error': {'type': 'string', 'example': 'A file or folder named sales_final.csv already exists in this directory'}
+                ),
+                404: OpenApiResponse(
+                    description="File or folder not found",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'error': {'type': 'string', 'example': 'Path does not exist'}
+                        }
                     }
-                }
-            )
-        }
-    )
+                ),
+                409: OpenApiResponse(
+                    description="A file or folder with the new name already exists",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'error': {'type': 'string', 'example': 'A file or folder named sales_final.csv already exists in this directory'}
+                        }
+                    }
+                )
+            }
+        )
     def patch(self, request):
         """Rename a file or folder."""
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
+        path       = self.sanitize_path(request.data.get('path'))
+        new_name   = request.data.get('new_name')
 
-        path     = self.sanitize_path(request.data.get('path'))
-        new_name = request.data.get('new_name')
-
-        if os.sep in new_name or '/' in new_name or '\\' in new_name or '\x00' in new_name:
-            return Response(
-            {'error': 'Invalid name provided'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-        # validate both fields are provided
+        # step 1 — validate both fields exist
         if not path or not new_name:
             return Response(
                 {'error': 'path and new_name are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # prevent new_name from containing path separators
-        # e.g. someone sends 'subfolder/malicious.csv' as new_name
-        if os.sep in new_name or '/' in new_name:
+        # step 2 — validate new_name contains no path separators or null bytes
+        if os.sep in new_name or '/' in new_name or '\\' in new_name or '\x00' in new_name:
             return Response(
-                {'error': 'new_name must be a name only, not a path. Example: sales_final.csv'},
+                {'error': 'Invalid name provided'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         absolute_path = os.path.join(media_path, path)
+
+        # step 3 — check source exists
+        if not os.path.exists(absolute_path):
+            return Response(
+                {'error': 'Path does not exist'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # step 4 — build new path and check for conflict
+        parent_directory  = os.path.dirname(absolute_path)
+        absolute_new_path = os.path.join(parent_directory, new_name)
+
+        if os.path.exists(absolute_new_path):
+            return Response(
+                {'error': f'A file or folder named {new_name} already exists in this directory'},
+                status=status.HTTP_409_CONFLICT
+            )
+
+        try:
+            os.rename(absolute_path, absolute_new_path)
+            new_relative_path = os.path.join(os.path.dirname(path), new_name)
+            return Response(
+                {
+                    'message':  f'Successfully renamed {os.path.basename(path)} to {new_name}',
+                    'old_path': path,
+                    'new_path': new_relative_path
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            """Rename a file or folder."""
+            media_path = self.get_user_media_path(request)
+            path     = self.sanitize_path(request.data.get('path'))
+            new_name = request.data.get('new_name')
+
+            # validate both fields are provided
+            if not path or not new_name:
+                return Response(
+                    {'error': 'path and new_name are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if os.sep in new_name or '/' in new_name or '\\' in new_name or '\x00' in new_name:
+                return Response(
+                {'error': 'Invalid name provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+            absolute_path = os.path.join(media_path, path)
+            
+
+            # prevent new_name from containing path separators
+            # e.g. someone sends 'subfolder/malicious.csv' as new_name
+            if os.sep in new_name or '/' in new_name:
+                return Response(
+                    {'error': 'new_name must be a name only, not a path. Example: sales_final.csv'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        
 
         # check source exists
         if not os.path.exists(absolute_path):
@@ -1314,7 +1384,7 @@ class FileShareCreateAPIView(BaseFileAPIView):
             )
 
         # verify file actually exists
-        absolute_path = os.path.join(settings.FILE_MANAGER_ROOT, file_path)
+        absolute_path = os.path.join(self.get_user_media_path(request), file_path)
         if not os.path.isfile(absolute_path):
             return Response(
                 {'error': 'File not found'},
@@ -1329,7 +1399,8 @@ class FileShareCreateAPIView(BaseFileAPIView):
         share = SharedFile.objects.create(
             file_path=file_path,
             expires_at=expires_at,
-            max_access=max_access
+            max_access=max_access,
+            created_by=request.user
         )
 
         share_url = request.build_absolute_uri(
@@ -1348,6 +1419,8 @@ class FileShareCreateAPIView(BaseFileAPIView):
         )
     
 class FileShareAccessAPIView(BaseFileAPIView):
+    authentication_classes = []          # ← no auth required
+    permission_classes     = [AllowAny]  # ← anyone can access
     """Access a file via a share token."""
     @extend_schema(
         summary="Access a shared file via token",
@@ -1420,6 +1493,7 @@ class FileShareAccessAPIView(BaseFileAPIView):
             )
         }
     )
+    
     def get(self, request, token):
         try:
             share = SharedFile.objects.get(token=token)
@@ -1443,7 +1517,7 @@ class FileShareAccessAPIView(BaseFileAPIView):
         share.save()
 
         # serve the file
-        absolute_path = os.path.join(settings.FILE_MANAGER_ROOT, share.file_path)
+        absolute_path = os.path.join(str(settings.FILE_MANAGER_ROOT), 'users', str(share.created_by_id), str(share.file_path))
         fh = open(absolute_path, 'rb')
         response = FileResponse(fh, content_type='application/octet-stream')
         response['Content-Disposition'] = f'attachment; filename={os.path.basename(share.file_path)}'
@@ -1467,51 +1541,51 @@ class FileShareRevokeAPIView(BaseFileAPIView):
         - If you need to share the file again, generate a new link via POST /api/files/share/
         
         **Example:**
-    Before revoke:
-    GET /api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/ → 200 file served
+        Before revoke:
+        GET /api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/ → 200 file served
 
-    After revoke:
-    GET /api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/ → 403 Link has been revoked
-        """,
-        parameters=[
-            OpenApiParameter(
-                name='token',
-                type=OpenApiTypes.UUID,
-                location=OpenApiParameter.PATH,
-                description='The unique share token of the link to revoke.',
-                required=True,
-                examples=[
-                    OpenApiExample(
-                        'Token to revoke',
-                        value='a8f3k2p9-xxxx-xxxx-xxxx'
-                    )
-                ]
-            )
-        ],
-        responses={
-            200: OpenApiResponse(
-                description="Link revoked successfully",
-                response={
-                    'type': 'object',
-                    'properties': {
-                        'message': {
-                            'type': 'string',
-                            'example': 'Share link revoked successfully'
+        After revoke:
+        GET /api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/ → 403 Link has been revoked
+            """,
+            parameters=[
+                OpenApiParameter(
+                    name='token',
+                    type=OpenApiTypes.UUID,
+                    location=OpenApiParameter.PATH,
+                    description='The unique share token of the link to revoke.',
+                    required=True,
+                    examples=[
+                        OpenApiExample(
+                            'Token to revoke',
+                            value='a8f3k2p9-xxxx-xxxx-xxxx'
+                        )
+                    ]
+                )
+            ],
+            responses={
+                200: OpenApiResponse(
+                    description="Link revoked successfully",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'message': {
+                                'type': 'string',
+                                'example': 'Share link revoked successfully'
+                            }
                         }
                     }
-                }
-            ),
-            404: OpenApiResponse(
-                description="Token does not exist",
-                response={
-                    'type': 'object',
-                    'properties': {
-                        'error': {'type': 'string', 'example': 'Share link not found'}
+                ),
+                404: OpenApiResponse(
+                    description="Token does not exist",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'error': {'type': 'string', 'example': 'Share link not found'}
+                        }
                     }
-                }
-            )
-        }
-    )
+                )
+            }
+        )
     def patch(self, request, token):
         try:
             share = SharedFile.objects.get(token=token)
@@ -1560,46 +1634,46 @@ class FileCopyAPIView(BaseFileAPIView):
             }
         },
         responses={
-    200: OpenApiResponse(
-        description="File or folder copied successfully",
-        response={
-            'type': 'object',
-            'properties': {
-                'message':     {'type': 'string', 'example': 'Successfully copied invoices/2024/sales.csv to archive/2024/sales.csv'},
-                'source':      {'type': 'string', 'example': 'invoices/2024/sales.csv'},
-                'destination': {'type': 'string', 'example': 'archive/2024/sales.csv'}
+        200: OpenApiResponse(
+            description="File or folder copied successfully",
+            response={
+                'type': 'object',
+                'properties': {
+                    'message':     {'type': 'string', 'example': 'Successfully copied invoices/2024/sales.csv to archive/2024/sales.csv'},
+                    'source':      {'type': 'string', 'example': 'invoices/2024/sales.csv'},
+                    'destination': {'type': 'string', 'example': 'archive/2024/sales.csv'}
+                }
             }
-        }
-    ),
-    409: OpenApiResponse(
-        description="Destination already exists",
-        response={
-            'type': 'object',
-            'properties': {
-                'error': {'type': 'string', 'example': 'Destination folder already exists'}
+        ),
+        409: OpenApiResponse(
+            description="Destination already exists",
+            response={
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string', 'example': 'Destination folder already exists'}
+                }
             }
-        }
-    ),
-    404: OpenApiResponse(
-        description="Source path does not exist",
-        response={
-            'type': 'object',
-            'properties': {
-                'error': {'type': 'string', 'example': 'Source path does not exist'}
+        ),
+        404: OpenApiResponse(
+            description="Source path does not exist",
+            response={
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string', 'example': 'Source path does not exist'}
+                }
             }
-        }
-    ),
-    400: OpenApiResponse(
-        description="Missing fields, self-copy attempt, or unexpected error",
-        response={
-            'type': 'object',
-            'properties': {
-                'error': {'type': 'string', 'example': 'source_path and destination_path are required'}
+        ),
+        400: OpenApiResponse(
+            description="Missing fields, self-copy attempt, or unexpected error",
+            response={
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string', 'example': 'source_path and destination_path are required'}
+                }
             }
+        )
         }
-    )
-}
-    )
+        )
     def post(self, request):
 
         source_path      = self.sanitize_path(request.data.get('source_path'))
@@ -1616,7 +1690,7 @@ class FileCopyAPIView(BaseFileAPIView):
                 {'error': 'source_path and destination_path are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         absolute_source      = os.path.join(media_path, source_path)
         absolute_destination = os.path.join(media_path, destination_path)
 
@@ -1718,7 +1792,7 @@ class FileMetaDataAPIView(BaseFileAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        absolute_path = os.path.join(settings.FILE_MANAGER_ROOT, path)
+        absolute_path = os.path.join(self.get_user_media_path(request), path)
 
         if not os.path.exists(absolute_path):
             return Response(
@@ -1768,15 +1842,15 @@ class BulkFileDeleteAPIView(BaseFileAPIView):
         successfully deleted and which failed.
         
         **Example:**
-```json
-        {
-            "paths": [
-                "invoices/2024/sales.csv",
-                "invoices/2024/report.pdf",
-                "invoices/2025/"
-            ]
-        }
-```
+        ```json
+                {
+                    "paths": [
+                        "invoices/2024/sales.csv",
+                        "invoices/2024/report.pdf",
+                        "invoices/2025/"
+                    ]
+                }
+        ```
         
         **Partial success:**
         If some paths succeed and others fail, the response is still 200 OK with both
@@ -1838,7 +1912,7 @@ class BulkFileDeleteAPIView(BaseFileAPIView):
                 }
             )
         }
-    )
+        )
     def delete(self, request):
         """Bulk delete files and folders."""
         paths = request.data.get('paths', [])
@@ -1868,7 +1942,7 @@ class BulkFileDeleteAPIView(BaseFileAPIView):
         failed  = []
 
         for path in paths:
-            absolute_path = os.path.join(settings.FILE_MANAGER_ROOT, path)
+            absolute_path = os.path.join(self.get_user_media_path(request), path)
             try:
                 if os.path.isfile(absolute_path):
                     os.remove(absolute_path)
@@ -1904,84 +1978,84 @@ class BulkFileDownloadAPIView(BaseFileAPIView):
         structure of each file inside the archive.
         
         **Example:**
-```json
-        {
-            "paths": [
-                "invoices/2024/sales.csv",
-                "invoices/2024/report.pdf",
-                "invoices/2025/january.csv"
-            ],
-            "zip_name": "my_files"
-        }
-```
-        Result: downloads `my_files.zip` containing:
-    my_files.zip
-        invoices/
-            2024/
-                sales.csv
-                report.pdf
-            2025/
-                january.csv
-        
-        **Notes:**
-        - Only files are supported — folder paths are skipped and added to the failed list.
-        - zip_name is optional. Defaults to 'download' if not provided.
-        - If none of the provided paths are valid files, a 400 error is returned.
-        """,
-        request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'paths': {
-                        'type': 'array',
-                        'items': {'type': 'string'},
-                        'description': 'List of relative file paths to include in the zip.',
-                        'example': [
-                            'invoices/2024/sales.csv',
-                            'invoices/2024/report.pdf'
-                        ]
-                    },
-                    'zip_name': {
-                        'type': 'string',
-                        'description': 'Name of the zip file without extension. Defaults to download.',
-                        'example': 'my_files'
-                    }
-                },
-                'required': ['paths']
-            }
-        },
-        responses={
-            200: OpenApiResponse(
-                response=OpenApiTypes.BINARY,
-                description="Zip archive containing all requested files"
-            ),
-            400: OpenApiResponse(
-                description="No paths provided or no valid files found",
-                response={
+        ```json
+                {
+                    "paths": [
+                        "invoices/2024/sales.csv",
+                        "invoices/2024/report.pdf",
+                        "invoices/2025/january.csv"
+                    ],
+                    "zip_name": "my_files"
+                }
+        ```
+            Result: downloads `my_files.zip` containing:
+        my_files.zip
+            invoices/
+                2024/
+                    sales.csv
+                    report.pdf
+                2025/
+                    january.csv
+            
+            **Notes:**
+            - Only files are supported — folder paths are skipped and added to the failed list.
+            - zip_name is optional. Defaults to 'download' if not provided.
+            - If none of the provided paths are valid files, a 400 error is returned.
+            """,
+            request={
+                'application/json': {
                     'type': 'object',
                     'properties': {
-                        'error': {
-                            'type': 'string',
-                            'example': 'paths is required and cannot be empty'
-                        },
-                        'failed': {
+                        'paths': {
                             'type': 'array',
-                            'items': {
-                                'type': 'object',
-                                'properties': {
-                                    'path':  {'type': 'string'},
-                                    'error': {'type': 'string'}
+                            'items': {'type': 'string'},
+                            'description': 'List of relative file paths to include in the zip.',
+                            'example': [
+                                'invoices/2024/sales.csv',
+                                'invoices/2024/report.pdf'
+                            ]
+                        },
+                        'zip_name': {
+                            'type': 'string',
+                            'description': 'Name of the zip file without extension. Defaults to download.',
+                            'example': 'my_files'
+                        }
+                    },
+                    'required': ['paths']
+                }
+            },
+            responses={
+                200: OpenApiResponse(
+                    response=OpenApiTypes.BINARY,
+                    description="Zip archive containing all requested files"
+                ),
+                400: OpenApiResponse(
+                    description="No paths provided or no valid files found",
+                    response={
+                        'type': 'object',
+                        'properties': {
+                            'error': {
+                                'type': 'string',
+                                'example': 'paths is required and cannot be empty'
+                            },
+                            'failed': {
+                                'type': 'array',
+                                'items': {
+                                    'type': 'object',
+                                    'properties': {
+                                        'path':  {'type': 'string'},
+                                        'error': {'type': 'string'}
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            )
-        }
-    )
+                )
+            }
+        )
     def post(self, request):
         """Bulk download files as a zip archive."""
-        media_path = settings.FILE_MANAGER_ROOT
+        media_path = self.get_user_media_path(request)
         paths      = request.data.get('paths')
         zip_name   = request.data.get('zip_name', 'download')
 
@@ -2058,94 +2132,94 @@ class StorageStatsAPIView(BaseFileAPIView):
         - Breakdown of files and sizes grouped by extension
         
         **Example response:**
-```json
-        {
-            "total_size_bytes": 1073741824,
-            "total_size_readable": "1.0 GB",
-            "total_files": 342,
-            "total_folders": 48,
-            "largest_file": {
-                "name": "report.pdf",
-                "path": "invoices/2024/report.pdf",
-                "size_bytes": 10485760,
-                "size_readable": "10.0 MB"
-            },
-            "by_extension": {
-                ".csv": {"count": 120, "size_bytes": 251658240, "size_readable": "240.0 MB"},
-                ".pdf": {"count": 80,  "size_bytes": 587202560, "size_readable": "560.0 MB"},
-                ".jpg": {"count": 142, "size_bytes": 286330880, "size_readable": "273.0 MB"}
-            }
-        }
-```
-        
-        **Notes:**
-        - This endpoint walks the entire media folder recursively — on very large 
-          storage it may take a moment to respond.
-        - Folder sizes are not included in the total — only actual file sizes are counted.
-        - If the media folder is empty, all counts will be zero and largest_file will be null.
-        """,
-        responses={
-            200: OpenApiResponse(
-                description="Storage statistics returned successfully",
-                response={
-                    'type': 'object',
-                    'properties': {
-                        'total_size_bytes': {
-                            'type': 'integer',
-                            'description': 'Total size of all files in bytes',
-                            'example': 1073741824
-                        },
-                        'total_size_readable': {
-                            'type': 'string',
-                            'description': 'Total size in human readable format',
-                            'example': '1.0 GB'
-                        },
-                        'total_files': {
-                            'type': 'integer',
-                            'description': 'Total number of files across all directories',
-                            'example': 342
-                        },
-                        'total_folders': {
-                            'type': 'integer',
-                            'description': 'Total number of folders across all directories',
-                            'example': 48
-                        },
-                        'largest_file': {
+        ```json
+                {
+                    "total_size_bytes": 1073741824,
+                    "total_size_readable": "1.0 GB",
+                    "total_files": 342,
+                    "total_folders": 48,
+                    "largest_file": {
+                        "name": "report.pdf",
+                        "path": "invoices/2024/report.pdf",
+                        "size_bytes": 10485760,
+                        "size_readable": "10.0 MB"
+                    },
+                    "by_extension": {
+                        ".csv": {"count": 120, "size_bytes": 251658240, "size_readable": "240.0 MB"},
+                        ".pdf": {"count": 80,  "size_bytes": 587202560, "size_readable": "560.0 MB"},
+                        ".jpg": {"count": 142, "size_bytes": 286330880, "size_readable": "273.0 MB"}
+                    }
+                }
+        ```
+                
+                **Notes:**
+                - This endpoint walks the entire media folder recursively — on very large 
+                storage it may take a moment to respond.
+                - Folder sizes are not included in the total — only actual file sizes are counted.
+                - If the media folder is empty, all counts will be zero and largest_file will be null.
+                """,
+                responses={
+                    200: OpenApiResponse(
+                        description="Storage statistics returned successfully",
+                        response={
                             'type': 'object',
-                            'nullable': True,
-                            'description': 'Details of the largest file found. Null if media folder is empty.',
                             'properties': {
-                                'name':          {'type': 'string',  'example': 'report.pdf'},
-                                'path':          {'type': 'string',  'example': 'invoices/2024/report.pdf'},
-                                'size_bytes':    {'type': 'integer', 'example': 10485760},
-                                'size_readable': {'type': 'string',  'example': '10.0 MB'}
-                            }
-                        },
-                        'by_extension': {
-                            'type': 'object',
-                            'description': 'Breakdown of file count and total size grouped by extension',
-                            'example': {
-                                '.csv': {'count': 120, 'size_bytes': 251658240, 'size_readable': '240.0 MB'},
-                                '.pdf': {'count': 80,  'size_bytes': 587202560, 'size_readable': '560.0 MB'}
+                                'total_size_bytes': {
+                                    'type': 'integer',
+                                    'description': 'Total size of all files in bytes',
+                                    'example': 1073741824
+                                },
+                                'total_size_readable': {
+                                    'type': 'string',
+                                    'description': 'Total size in human readable format',
+                                    'example': '1.0 GB'
+                                },
+                                'total_files': {
+                                    'type': 'integer',
+                                    'description': 'Total number of files across all directories',
+                                    'example': 342
+                                },
+                                'total_folders': {
+                                    'type': 'integer',
+                                    'description': 'Total number of folders across all directories',
+                                    'example': 48
+                                },
+                                'largest_file': {
+                                    'type': 'object',
+                                    'nullable': True,
+                                    'description': 'Details of the largest file found. Null if media folder is empty.',
+                                    'properties': {
+                                        'name':          {'type': 'string',  'example': 'report.pdf'},
+                                        'path':          {'type': 'string',  'example': 'invoices/2024/report.pdf'},
+                                        'size_bytes':    {'type': 'integer', 'example': 10485760},
+                                        'size_readable': {'type': 'string',  'example': '10.0 MB'}
+                                    }
+                                },
+                                'by_extension': {
+                                    'type': 'object',
+                                    'description': 'Breakdown of file count and total size grouped by extension',
+                                    'example': {
+                                        '.csv': {'count': 120, 'size_bytes': 251658240, 'size_readable': '240.0 MB'},
+                                        '.pdf': {'count': 80,  'size_bytes': 587202560, 'size_readable': '560.0 MB'}
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-            ),
-            400: OpenApiResponse(
-                description="Unexpected error reading the media folder",
-                response={
-                    'type': 'object',
-                    'properties': {
-                        'error': {'type': 'string', 'example': 'Error reading media folder'}
-                    }
+                    ),
+                    400: OpenApiResponse(
+                        description="Unexpected error reading the media folder",
+                        response={
+                            'type': 'object',
+                            'properties': {
+                                'error': {'type': 'string', 'example': 'Error reading media folder'}
+                            }
+                        }
+                    )
                 }
             )
-        }
-    )
     def get(self, request):
         """Get storage statistics."""
-        media_path    = settings.FILE_MANAGER_ROOT
+        media_path    = self.get_user_media_path(request)
         total_size    = 0
         total_files   = 0
         total_folders = 0
