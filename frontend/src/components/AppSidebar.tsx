@@ -101,34 +101,48 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems
                 .filter((item) => !item.adminOnly || userRole === "admin")
-                .map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <TooltipProvider delayDuration={100}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <SidebarMenuButton asChild>
-                            <NavLink
-                              to={item.url}
-                              className={`flex items-center gap-3 px-3 py-2 rounded hover:bg-sidebar-accent 
-                                transition-colors ${
+                .map((item) => {
+                  const isStorage = item.title === "Storage";
+                  const isDisabled = !isStorage;
+
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton asChild>
+                              <div
+                                className={`flex items-center gap-3 px-3 py-2 rounded transition-colors ${
                                   !open ? "justify-center" : ""
+                                } ${
+                                  isDisabled
+                                    ? "opacity-50 blur-sm cursor-not-allowed"
+                                    : "hover:bg-sidebar-accent cursor-pointer"
+                                } ${
+                                  !isDisabled &&
+                                  "bg-sidebar-accent text-sidebar-primary font-medium"
                                 }`}
-                              activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
-                            >
-                              <item.icon className="h-5 w-5 flex-shrink-0" />
-                              {open && <span>{item.title}</span>}
-                            </NavLink>
-                          </SidebarMenuButton>
-                        </TooltipTrigger>
-                        {!open && (
-                          <TooltipContent side="right" sideOffset={10}>
-                            <p>{item.title}</p>
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
-                  </SidebarMenuItem>
-                ))}
+                                onClick={() => {
+                                  if (!isDisabled) {
+                                    navigate(item.url);
+                                  }
+                                }}
+                              >
+                                <item.icon className="h-5 w-5 flex-shrink-0" />
+                                {open && <span>{item.title}</span>}
+                              </div>
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                          {!open && (
+                            <TooltipContent side="right" sideOffset={10}>
+                              <p>{item.title}</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
+                    </SidebarMenuItem>
+                  );
+                })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

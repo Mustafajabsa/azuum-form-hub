@@ -25,10 +25,14 @@ venv/
 env/
 ENV/
 backend-env/
+backend/venv/
+backend/form_builder_project/venv/
 
 # Database
 *.sqlite3
 *.db
+backend/db.sqlite3
+backend/form_builder_project/db.sqlite3
 
 # Django
 *.log
@@ -48,3 +52,15 @@ Thumbs.db
 # Notes
 notes.md
 *.md
+backend/Project_notes.md
+backend/form_builder_project/storage/Notes.md
+
+# Media files
+backend/media/
+backend/form_builder_project/media/
+
+# Cache and temporary files
+*.pyc
+__pycache__/
+backend/**/__pycache__/
+backend/**/migrations/__pycache__/
