@@ -1,12 +1,5 @@
 import { useState } from "react";
-import {
-  ChevronRight,
-  HardDrive,
-  Star,
-  Clock,
-  Trash2,
-  Cloud,
-} from "lucide-react";
+import { ChevronRight, HardDrive, Star, Clock, Trash2 } from "lucide-react";
 import { FileIcon } from "./FileIcon";
 import { cn } from "@/lib/utils";
 
@@ -176,10 +169,6 @@ export function ExplorerSidebar({
         <div className="mb-3">
           <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Locations
-          </div>
-          <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground">
-            <Cloud size={15} />
-            Cloud Storage
           </div>
           <button
             onClick={() => onNavigate("trash")}
