@@ -67,6 +67,38 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        # default rates — apply to all views unless overridden
+        'anon':               '30/minute',    # unauthenticated requests
+        'user':               '200/minute',   # authenticated requests
+
+        # auth specific — strictest limits
+        'auth_login':         '5/minute',     # login attempts per IP
+        'auth_register':      '3/minute',     # registration attempts per IP
+
+        # upload specific
+        'file_upload':        '20/minute',    # single file uploads
+        'folder_upload':      '5/minute',     # folder structure uploads
+
+        # download specific
+        'file_download':      '30/minute',    # single file downloads
+        'bulk_download':      '5/minute',     # zip archive generation
+
+        # expensive operations
+        'storage_stats':      '10/minute',    # walks entire disk
+        'file_search':        '30/minute',    # directory listing and search
+
+        # destructive operations
+        'bulk_delete':        '10/minute',    # bulk deletions
+
+        # share operations
+        'share_create':       '20/minute',    # generating share links
+    }
+
 }
 
 # JWT configuration

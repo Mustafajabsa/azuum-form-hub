@@ -49,9 +49,12 @@ class FileInfoViewSet(viewsets.ModelViewSet):
 """Base class"""
 class BaseFileAPIView(APIView):
     """Base class with shared utilities for all file manager views."""
+    
+    # 1 — every storage endpoint requires a valid JWT token
     authentication_classes = [JWTAuthentication]
     permission_classes     = [IsAuthenticated]
 
+    # 2 — every user gets their own isolated folder
     def get_user_media_path(self, request):
         """Build and return the user's isolated folder path."""
         user_folder = os.path.join(
@@ -73,6 +76,7 @@ class BaseFileAPIView(APIView):
             return None
         return path
 
+    # 3 — boundary check now uses user's folder not global root
     def is_within_media_root(self, absolute_path, request):
         """Final check — ensure path hasn't escaped the user's folder."""
         user_path = self.get_user_media_path(request)
@@ -88,6 +92,7 @@ class BaseFileAPIView(APIView):
             return f'{size_bytes / (1024 ** 2):.1f} MB'
         else:
             return f'{size_bytes / (1024 ** 3):.1f} GB'
+
 
 """Other classes"""
 
