@@ -7,6 +7,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import get_user_model
 from .serializers import RegisterSerializer, UserSerializer, ChangePasswordSerializer
+from storage.throttles import RegisterRateThrottle, LoginRateThrottle
 
 User = get_user_model()
 
@@ -15,6 +16,7 @@ class RegisterAPIView(APIView):
     """Register a new user."""
     authentication_classes = []    # no auth required to register
     permission_classes     = [AllowAny]
+    throttle_classes       = [RegisterRateThrottle]
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -34,6 +36,7 @@ class LoginAPIView(APIView):
     """Login and receive JWT tokens."""
     authentication_classes = []
     permission_classes     = [AllowAny]
+    throttle_classes       = [LoginRateThrottle]
 
     def post(self, request):
         username = request.data.get('username')

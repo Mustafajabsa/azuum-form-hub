@@ -3,7 +3,11 @@ from django.contrib.auth.models import AbstractUser
 
 # Create your models here.
 class CustomUser(AbstractUser):
-    # everything from Django's default user, plus:
-    role          = models.CharField('super_admin', 'admin', 'user')   # 'super_admin', 'admin', 'user'
-    storage_quota = models.BigIntegerField(default=1073741824)  # 1GB per user
+    class Role(models.TextChoices):
+        SUPER_ADMIN = 'super_admin', 'Super Admin'
+        ADMIN       = 'admin',       'Admin'
+        USER        = 'user',        'User'
+
+    role          = models.CharField(max_length=20, choices=Role.choices, default=Role.USER)
+    storage_quota = models.BigIntegerField(default=1073741824)  # 1GB
     created_at    = models.DateTimeField(auto_now_add=True)
