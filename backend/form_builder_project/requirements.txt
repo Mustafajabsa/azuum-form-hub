@@ -3,3 +3,4 @@ djangorestframework
 drf-spectacular
 django-celery-beat
 djangorestframework-simplejwt
+djoser

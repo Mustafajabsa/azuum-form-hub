@@ -1,165 +1,37 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { FileIcon } from "@/components/FileIcon";
-import { type FileKind } from "@/components/file-utils";
-import { ExplorerSidebar } from "@/components/ExplorerSidebar";
-import { ExplorerToolbar } from "@/components/ExplorerToolbar";
-import { FileGrid } from "@/components/FileGrid";
-import { DetailsPanel } from "@/components/DetailsPanel";
-import {
-  getFileKind,
-  formatBytes,
-  formatDate,
-  type FileNode,
-} from "@/components/file-utils";
-import {
-  getMockNode,
-  getMockPath,
-  getMockChildren,
-  getMockFolders,
-  mockFileTree,
-} from "@/components/mock-file-data";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
-import { useAuth } from "../hooks/use-auth";
-
-type FileItem = {
-  id: string;
-  name: string;
-  type: "file" | "folder";
-  size?: number;
-  modified: string;
-  parentId: string | null;
-  selected?: boolean;
-};
+import { ExplorerSidebar } from "@/components/explorer-sidebar";
+import { ExplorerToolbar } from "@/components/explorer-toolbar";
+import { FileGrid } from "@/components/file-grid";
+import { DetailsPanel } from "@/components/details-panel";
+import { getNode, formatBytes, type FileNode } from "@/lib/file-data";
+import { getTrashFolder, moveToTrash, isItemTrashed } from "@/lib/trash-data";
 
 export default function Storage() {
   const { folderId } = useParams<{ folderId?: string }>();
-  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [newFolderName, setNewFolderName] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<FileNode | null>(null);
-  const [history, setHistory] = useState({
-    back: [] as string[],
-    forward: [] as string[],
-  });
-  const [trashItems, setTrashItems] = useState<FileNode[]>([]);
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(
-    null,
-  );
-  const [deletedItems, setDeletedItems] = useState<string[]>([]);
-  const [sidebarWidth, setSidebarWidth] = useState(240); // Default sidebar width
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
-  const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Get current folder and items from mock data or trash
-  const currentFolder = folderId ? getMockNode(folderId) : null;
-  const items = folderId === "trash" ? trashItems : getMockChildren(folderId);
+  const [currentId, setCurrentId] = useState<string>(folderId || "root");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [trashUpdateTrigger, setTrashUpdateTrigger] = useState(0);
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [query, setQuery] = useState("");
+  const [back, setBack] = useState<string[]>([]);
+  const [forward, setForward] = useState<string[]>([]);
 
-  // Get folders for sidebar
-  const foldersForSidebar = getMockFolders();
+  const navigateToFolder = (id: string) => {
+    if (id === currentId) return;
+    setBack((b) => [...b, currentId]);
+    setForward([]);
+    setCurrentId(id);
+    setSelectedIds(new Set());
 
-  // Filter items based on search query and deleted items
-  const filteredItems = useMemo(() => {
-    let filtered = items;
-
-    // Filter out deleted items (only for non-trash folders)
-    if (folderId !== "trash") {
-      filtered = filtered.filter((item) => !deletedItems.includes(item.id));
-    }
-
-    // Apply search filter
-    if (!searchQuery.trim()) return filtered;
-    const query = searchQuery.toLowerCase().trim();
-    return filtered.filter((item) => item.name.toLowerCase().includes(query));
-  }, [items, searchQuery, deletedItems, folderId]);
-
-  // Debug logging
-  console.log("Debug - folderId:", folderId);
-  console.log("Debug - items:", items);
-  console.log("Debug - filteredItems:", filteredItems);
-
-  const handleCreateFolder = () => {
-    if (!newFolderName.trim()) {
-      toast({
-        title: "Error",
-        description: "Folder name cannot be empty",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Mock folder creation
-    toast({
-      title: "Success",
-      description: `Folder "${newFolderName}" created successfully`,
-    });
-
-    setNewFolderName("");
-    setShowNewFolderDialog(false);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Mock file upload
-    toast({
-      title: "Success",
-      description: `${files.length} file(s) uploaded successfully`,
-    });
-
-    // Clear input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  // Convert FileNode to FileItem for compatibility
-  const convertToFileItem = (node: FileNode) => ({
-    id: node.id,
-    name: node.name,
-    type: node.kind === "folder" ? ("folder" as const) : ("file" as const),
-    size: node.size,
-    modified: node.modified,
-    parentId: node.parentId || null,
-    selected: false,
-  });
-
-  // Get current path for navigation
-  const getCurrentPath = (): FileNode[] => {
-    if (folderId === "trash") {
-      return [
-        {
-          id: "trash",
-          name: "Trash",
-          kind: "folder",
-          modified: new Date().toISOString(),
-        },
-      ];
-    }
-    if (folderId) {
-      return getMockPath(folderId);
-    }
-    return [
-      {
-        id: "root",
-        name: "Home",
-        kind: "folder",
-        modified: new Date().toISOString(),
-      },
-    ];
-  };
-
-  // Navigation handlers
-  const handleNavigate = (id: string) => {
+    // Update URL
     if (id === "root") {
       navigate("/storage");
     } else {
@@ -168,357 +40,283 @@ export default function Storage() {
   };
 
   const handleBack = () => {
-    if (history.back.length > 0) {
-      const newBack = [...history.back];
-      const targetId = newBack.pop()!;
-      setHistory({
-        back: newBack,
-        forward: [...history.forward, folderId || "root"],
-      });
-      handleNavigate(targetId);
+    if (back.length === 0) return;
+    const prev = back[back.length - 1];
+    setBack((b) => b.slice(0, -1));
+    setForward((f) => [currentId, ...f]);
+    setCurrentId(prev);
+    setSelectedIds(new Set());
+
+    // Update URL
+    if (prev === "root") {
+      navigate("/storage");
+    } else {
+      navigate(`/storage/${prev}`);
     }
   };
 
   const handleForward = () => {
-    if (history.forward.length > 0) {
-      const newForward = [...history.forward];
-      const targetId = newForward.pop()!;
-      setHistory({
-        back: [...history.back, folderId || "root"],
-        forward: newForward,
-      });
-      handleNavigate(targetId);
-    }
-  };
+    if (forward.length === 0) return;
+    const next = forward[0];
+    setForward((f) => f.slice(1));
+    setBack((b) => [...b, currentId]);
+    setCurrentId(next);
+    setSelectedIds(new Set());
 
-  const handleFileSelect = (id: string, event?: React.MouseEvent) => {
-    // Handle click-away deselection (empty string)
-    if (id === "") {
-      setSelectedItems([]);
-      setSelectedId(null);
-      setSelectedNode(null);
-      return;
-    }
-
-    const currentIndex = filteredItems.findIndex((item) => item.id === id);
-    const node = filteredItems.find((item) => item.id === id);
-
-    if (event?.shiftKey) {
-      // Shift+click: Add item to selection (regardless of order)
-      if (selectedItems.includes(id)) {
-        // If already selected, remove from selection
-        setSelectedItems((prev) => prev.filter((item) => item !== id));
-        if (selectedId === id) {
-          setSelectedId(null);
-          setSelectedNode(null);
-        }
-      } else {
-        // Add to selection
-        setSelectedItems((prev) => [...prev, id]);
-        setSelectedId(id);
-        setSelectedNode(node || null);
-      }
+    // Update URL
+    if (next === "root") {
+      navigate("/storage");
     } else {
-      // Regular click: Single selection or toggle
-      const isSelected = selectedItems.includes(id);
-
-      if (event?.ctrlKey || event?.metaKey) {
-        // Ctrl/Cmd+click: Toggle selection
-        if (isSelected) {
-          setSelectedItems((prev) => prev.filter((item) => item !== id));
-          if (selectedId === id) {
-            setSelectedId(null);
-            setSelectedNode(null);
-          }
-        } else {
-          setSelectedItems((prev) => [...prev, id]);
-          setSelectedId(id);
-          setSelectedNode(node || null);
-        }
-      } else {
-        // Normal click: Single selection
-        setSelectedItems([id]);
-        setSelectedId(id);
-        setSelectedNode(node || null);
-        setLastSelectedIndex(currentIndex);
-      }
+      navigate(`/storage/${next}`);
     }
-
-    console.log("Debug - selected node:", node);
   };
 
-  const handleFileOpen = (node: FileNode) => {
-    setSelectedNode(node);
-    setSelectedId(node.id);
+  const open = (node: FileNode) => {
+    if (node.kind === "folder") navigateToFolder(node.id);
+  };
 
-    if (node.kind === "folder") {
-      setHistory((prev) => ({
-        back: [...prev.back, folderId || "root"],
-        forward: [],
-      }));
-      handleNavigate(node.id);
+  const handleSelection = (
+    currentSelectedIds: Set<string>,
+    clickedId: string,
+    shiftKey: boolean,
+    ctrlKey: boolean,
+  ) => {
+    if (shiftKey) {
+      // Shift+Click: add to selection (multi-selection)
+      const newSelectedIds = new Set(currentSelectedIds);
+      if (newSelectedIds.has(clickedId)) {
+        newSelectedIds.delete(clickedId);
+      } else {
+        newSelectedIds.add(clickedId);
+      }
+      setSelectedIds(newSelectedIds);
     } else {
-      // Handle file opening - could show preview or download
-      toast({
-        title: "File Selected",
-        description: `Selected file: ${node.name}`,
-      });
+      // Normal click: select only this item (single selection)
+      setSelectedIds(new Set([clickedId]));
     }
   };
 
-  // Convert filtered items to FileNode array
-  const fileNodes: FileNode[] = filteredItems;
-
-  const handleDownload = (item: FileNode) => {
-    // Mock download functionality
-    toast({
-      title: "Download",
-      description: `Download for "${item.name}" will be available soon`,
-    });
+  const handleDeselectAll = () => {
+    setSelectedIds(new Set());
   };
 
-  const handleDownloadSelected = useCallback(() => {
-    toast({
-      title: "Download",
-      description: `Downloading ${selectedItems.length} item(s)...`,
-    });
-  }, [selectedItems]);
+  const handleCreateFolder = () => {
+    if (!newFolderName.trim()) {
+      return; // Don't create folder with empty name
+    }
 
-  const handleMoveToTrash = useCallback(() => {
-    if (selectedItems.length === 0) {
-      toast({
-        title: "No Selection",
-        description: "Please select items to move to trash",
-        variant: "destructive",
-      });
+    // In a real application, you would call an API here
+    // For now, we'll just show a success message and close the dialog
+    console.log(`Creating folder "${newFolderName}" in "${currentId}"`);
+
+    // Reset and close dialog
+    setNewFolderName("");
+    setShowNewFolderDialog(false);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedFiles(e.target.files);
+  };
+
+  const handleUpload = () => {
+    if (!selectedFiles || selectedFiles.length === 0) {
       return;
     }
 
-    if (
-      confirm(
-        `Are you sure you want to move ${selectedItems.length} item(s) to trash?`,
-      )
-    ) {
-      // Get the items to move to trash
-      const itemsToTrash = selectedItems
-        .map((id) => getMockNode(id))
-        .filter(Boolean) as FileNode[];
-
-      // Add items to trash
-      setTrashItems((prev) => [...prev, ...itemsToTrash]);
-
-      // Show success message
-      toast({
-        title: "Moved to Trash",
-        description: `${selectedItems.length} item(s) moved to trash`,
-      });
-
-      // Clear selection
-      setSelectedItems([]);
-      setSelectedId(null);
-      setSelectedNode(null);
-    }
-  }, [selectedItems]);
-
-  const handleSelectAll = useCallback(() => {
-    const allItemIds = filteredItems.map((item) => item.id);
-    setSelectedItems(allItemIds);
-
-    if (allItemIds.length > 0) {
-      // Set the last item as the selected node for details panel
-      const lastItem = filteredItems[filteredItems.length - 1];
-      setSelectedId(lastItem.id);
-      setSelectedNode(lastItem);
+    // In a real application, you would upload files to an API here
+    console.log(`Uploading ${selectedFiles.length} files to "${currentId}":`);
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      console.log(`- ${file.name} (${file.size} bytes)`);
     }
 
-    toast({
-      title: "All Selected",
-      description: `${allItemIds.length} item(s) selected`,
-    });
-  }, [filteredItems]);
+    // Reset and close dialog
+    setSelectedFiles(null);
+    setShowUploadDialog(false);
+  };
 
-  const handleDelete = useCallback(() => {
-    if (selectedItems.length === 0) {
-      toast({
-        title: "No Selection",
-        description: "Please select items to delete",
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleMoveToTrash = () => {
+    if (selectedIds.size === 0) return;
 
-    if (
-      confirm(
-        `Are you sure you want to permanently delete ${selectedItems.length} item(s)? This action cannot be undone.`,
-      )
-    ) {
-      if (folderId === "trash") {
-        // Delete from trash - permanently remove
-        setTrashItems((prev) =>
-          prev.filter((item) => !selectedItems.includes(item.id)),
-        );
-      } else {
-        // Delete from current folder - mark as deleted
-        setDeletedItems((prev) => [...prev, ...selectedItems]);
-        // Also move to trash for recovery
-        const itemsToTrash = selectedItems
-          .map((id) => getMockNode(id))
-          .filter(Boolean) as FileNode[];
-        setTrashItems((prev) => [...prev, ...itemsToTrash]);
+    // Get the actual FileNode objects for selected items
+    const itemsToMove: FileNode[] = [];
+    selectedIds.forEach((id) => {
+      const node = getNode(id);
+      if (node) {
+        itemsToMove.push(node);
       }
+    });
 
-      // Show success message
-      toast({
-        title: "Deleted",
-        description: `${selectedItems.length} item(s) permanently deleted`,
-      });
+    if (itemsToMove.length === 0) return;
 
-      // Clear selection
-      setSelectedItems([]);
-      setSelectedId(null);
-      setSelectedNode(null);
-    }
-  }, [selectedItems, folderId]);
+    // Move items to trash
+    const trashCount = moveToTrash(itemsToMove);
+    console.log(`Moved ${trashCount} items to trash:`);
+    itemsToMove.forEach((item) => {
+      console.log(`- ${item.name} (${item.kind})`);
+    });
 
-  const handleDeleteSelected = useCallback(() => {
-    if (
-      confirm(
-        `Are you sure you want to delete ${selectedItems.length} item(s)?`,
-      )
-    ) {
-      handleDelete();
-      // Mock delete functionality
-      toast({
-        title: "Success",
-        description: `${selectedItems.length} item(s) deleted`,
-      });
+    // Trigger re-render to update trash folder
+    setTrashUpdateTrigger((prev) => prev + 1);
 
-      // Clear selection
-      setSelectedItems([]);
-    }
-  }, [selectedItems]);
+    // Clear selection after moving to trash
+    setSelectedIds(new Set());
+  };
 
-  // Loading state (not needed for mock data)
-  // Error state (not needed for mock data)
+  const current = useMemo(() => {
+    return currentId === "trash" ? getTrashFolder() : getNode(currentId);
+  }, [currentId, trashUpdateTrigger]);
+  const items = useMemo(() => {
+    const children = current?.children ?? [];
+    // Filter out trashed items (except when viewing the trash folder itself)
+    const nonTrashedChildren =
+      currentId === "trash"
+        ? children
+        : children.filter((c) => !isItemTrashed(c.id));
+
+    const filtered = query
+      ? nonTrashedChildren.filter((c) =>
+          c.name.toLowerCase().includes(query.toLowerCase()),
+        )
+      : nonTrashedChildren;
+    // Folders first, then by name
+    return [...filtered].sort((a, b) => {
+      if (a.kind === "folder" && b.kind !== "folder") return -1;
+      if (a.kind !== "folder" && b.kind === "folder") return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [current, query, currentId, trashUpdateTrigger]);
+
+  const selected =
+    selectedIds.size === 1
+      ? (getNode(Array.from(selectedIds)[0]) ?? null)
+      : null;
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      {/* Favorites Section (Sidebar) */}
-      <div style={{ width: `${sidebarWidth}px` }} className="flex-shrink-0">
-        <ExplorerSidebar
-          currentId={folderId || "root"}
-          onNavigate={handleNavigate}
-          folders={foldersForSidebar}
-          trashItems={trashItems}
-        />
-      </div>
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+      <ExplorerSidebar currentId={currentId} onNavigate={navigateToFolder} />
 
-      {/* Vertical Resize Line - Between Favorites and Items */}
-      <div
-        className="w-1 bg-border cursor-col-resize hover:bg-accent transition-colors"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          const startX = e.clientX;
-          const startWidth = sidebarWidth;
-
-          const handleMouseMove = (e: MouseEvent) => {
-            const newWidth = startWidth + (e.clientX - startX);
-            if (newWidth >= 180 && newWidth <= 400) {
-              setSidebarWidth(newWidth);
-            }
-          };
-
-          const handleMouseUp = () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
-          };
-
-          document.addEventListener("mousemove", handleMouseMove);
-          document.addEventListener("mouseup", handleMouseUp);
-        }}
-      />
-
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Toolbar */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <ExplorerToolbar
-          currentId={folderId || "root"}
-          onNavigate={handleNavigate}
-          history={history}
+          currentId={currentId}
+          onNavigate={navigateToFolder}
+          history={{ back, forward }}
           onBack={handleBack}
           onForward={handleForward}
           view={view}
           onViewChange={setView}
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-          onUpload={() => fileInputRef.current?.click()}
+          query={query}
+          onQueryChange={setQuery}
+          selectedIds={selectedIds}
           onNewFolder={() => setShowNewFolderDialog(true)}
-          currentPath={getCurrentPath()}
-          selectedItems={selectedItems}
+          onUpload={() => setShowUploadDialog(true)}
           onMoveToTrash={handleMoveToTrash}
-          onDelete={handleDelete}
-          onSelectAll={handleSelectAll}
         />
 
         <main className="flex min-h-0 flex-1 flex-col bg-background">
           <FileGrid
-            items={fileNodes}
-            selectedId={selectedId}
-            selectedItems={selectedItems}
-            onSelect={handleFileSelect}
-            onOpen={handleFileOpen}
+            items={items}
+            selectedIds={selectedIds}
+            onSelect={handleSelection}
+            onOpen={open}
             view={view}
+            onDeselectAll={handleDeselectAll}
           />
           <div className="flex h-7 items-center justify-between border-t border-border bg-toolbar px-4 text-xs text-muted-foreground">
             <span>
-              {fileNodes.length} item{fileNodes.length === 1 ? "" : "s"}
-              {selectedNode && `, 1 selected`}
+              {items.length} item{items.length === 1 ? "" : "s"}
+              {selectedIds.size > 0 && `, ${selectedIds.size} selected`}
             </span>
             <span>248 GB available</span>
           </div>
         </main>
       </div>
 
-      {/* Item Details Section (Details Panel) */}
-      <div className="w-80 flex-shrink-0">
-        <DetailsPanel node={selectedNode} />
-      </div>
-
-      {/* Hidden file input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        className="hidden"
-        multiple
-        disabled={false}
-      />
+      <DetailsPanel node={selected} />
 
       {/* New Folder Dialog */}
       {showNewFolderDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-background p-6 rounded-lg w-full max-w-md mx-4">
             <h3 className="text-lg font-semibold mb-4">Create New Folder</h3>
-            <Input
+            <input
               type="text"
               placeholder="Folder name"
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreateFolder()}
               autoFocus
-              className="mb-4"
-              disabled={false}
+              className="w-full mb-4 px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
             <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
+              <button
                 onClick={() => setShowNewFolderDialog(false)}
-                disabled={false}
+                className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent transition-colors"
               >
                 Cancel
-              </Button>
-              <Button onClick={handleCreateFolder} disabled={false}>
-                {false ? "Creating..." : "Create"}
-              </Button>
+              </button>
+              <button
+                onClick={handleCreateFolder}
+                disabled={!newFolderName.trim()}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Dialog */}
+      {showUploadDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background p-6 rounded-lg w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Upload Files</h3>
+
+            {/* File Input */}
+            <div className="mb-4">
+              <input
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                className="w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
+              />
+            </div>
+
+            {/* Selected Files Display */}
+            {selectedFiles && selectedFiles.length > 0 && (
+              <div className="mb-4">
+                <p className="text-sm font-medium mb-2">Selected files:</p>
+                <div className="max-h-32 overflow-y-auto border border-border rounded-md p-2">
+                  {Array.from(selectedFiles).map((file, index) => (
+                    <div
+                      key={index}
+                      className="text-sm text-muted-foreground py-1"
+                    >
+                      {file.name} ({formatBytes(file.size)})
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowUploadDialog(false);
+                  setSelectedFiles(null);
+                }}
+                className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpload}
+                disabled={!selectedFiles || selectedFiles.length === 0}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Upload
+              </button>
             </div>
           </div>
         </div>

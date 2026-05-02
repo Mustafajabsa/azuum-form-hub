@@ -1,45 +1,70 @@
 import { useState } from "react";
+import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, X } from "lucide-react";
 import { ContactForm } from "@/components/ContactForm";
+import { useAuth } from "@/hooks/use-auth";
 
 const Landing = () => {
+  const {
+    login,
+    register,
+    isAuthenticated,
+    isLoggingIn,
+    isRegistering,
+    loginError,
+    registerError,
+  } = useAuth();
   const [activeTab, setActiveTab] = useState("login");
   const [showContact, setShowContact] = useState(false);
   const [hasWebsite, setHasWebsite] = useState(false);
   const [formData, setFormData] = useState({
-    // Login form
-    username: "",
+    // Shared fields
+    email: "",
     password: "",
+    passwordConfirm: "",
 
-    // Signup form
+    // Signup only fields
     fullName: "",
     organization: "",
     role: "",
-    email: "",
     country: "",
     website: "",
   });
 
+  // Redirect authenticated users to dashboard
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle login logic
-    console.log("Login attempt:", {
-      username: formData.username,
-      password: formData.password,
-    });
+    // Use real authentication API
+    login(formData.email, formData.password);
   };
 
   const handleSignup = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle signup logic
-    console.log("Signup data:", {
-      ...formData,
-      website: hasWebsite ? formData.website : undefined,
-    });
+
+    // Validate password confirmation
+    if (formData.password !== formData.passwordConfirm) {
+      // You might want to show an error message here
+      console.error("Passwords do not match");
+      return;
+    }
+
+    // Use real authentication API
+    const signupData = {
+      email: formData.email,
+      password: formData.password,
+      password_confirm: formData.passwordConfirm,
+      first_name: formData.fullName,
+      // Add other fields as needed by your API
+    };
+    register(signupData);
   };
 
   return (
@@ -72,13 +97,14 @@ const Landing = () => {
           <TabsContent value="login">
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="username"
-                  placeholder="Enter your username"
-                  value={formData.username}
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={formData.email}
                   onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
+                    setFormData({ ...formData, email: e.target.value })
                   }
                   required
                 />
@@ -96,8 +122,19 @@ const Landing = () => {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full mt-4">
-                Login
+              {loginError && (
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-md text-sm">
+                  {loginError instanceof Error
+                    ? loginError.message
+                    : "Login failed. Please try again."}
+                </div>
+              )}
+              <Button
+                type="submit"
+                className="w-full mt-4"
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? "Signing in..." : "Login"}
               </Button>
             </form>
           </TabsContent>
@@ -199,8 +236,51 @@ const Landing = () => {
                 </div>
               )}
 
-              <Button type="submit" className="w-full mt-4">
-                Create Account
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Create a password"
+                  value={formData.password}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="passwordConfirm">Confirm Password</Label>
+                <Input
+                  id="passwordConfirm"
+                  type="password"
+                  placeholder="Confirm your password"
+                  value={formData.passwordConfirm}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      passwordConfirm: e.target.value,
+                    })
+                  }
+                  required
+                />
+              </div>
+
+              {registerError && (
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-md text-sm">
+                  {registerError instanceof Error
+                    ? registerError.message
+                    : "Registration failed. Please try again."}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full mt-4"
+                disabled={isRegistering}
+              >
+                {isRegistering ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
           </TabsContent>
