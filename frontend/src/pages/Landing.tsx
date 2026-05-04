@@ -23,11 +23,12 @@ const Landing = () => {
   const [hasWebsite, setHasWebsite] = useState(false);
   const [formData, setFormData] = useState({
     // Shared fields
-    email: "",
+    username: "",
     password: "",
     passwordConfirm: "",
 
     // Signup only fields
+    email: "",
     fullName: "",
     organization: "",
     role: "",
@@ -43,7 +44,7 @@ const Landing = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     // Use real authentication API
-    login(formData.email, formData.password);
+    login(formData.username, formData.password);
   };
 
   const handleSignup = (e: React.FormEvent) => {
@@ -59,6 +60,7 @@ const Landing = () => {
     // Use real authentication API
     const signupData = {
       email: formData.email,
+      username: formData.username,
       password: formData.password,
       password_confirm: formData.passwordConfirm,
       first_name: formData.fullName,
@@ -97,14 +99,14 @@ const Landing = () => {
           <TabsContent value="login">
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={formData.email}
+                  id="username"
+                  type="text"
+                  placeholder="Enter your username"
+                  value={formData.username}
                   onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
+                    setFormData({ ...formData, username: e.target.value })
                   }
                   required
                 />
@@ -189,6 +191,20 @@ const Landing = () => {
                   value={formData.email}
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="Choose a username"
+                  value={formData.username}
+                  onChange={(e) =>
+                    setFormData({ ...formData, username: e.target.value })
                   }
                   required
                 />

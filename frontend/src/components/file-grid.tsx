@@ -1,6 +1,20 @@
 import { FileIcon } from "./file-icon";
-import { formatBytes, formatDate, type FileNode } from "@/lib/file-data";
 import { cn } from "@/lib/utils";
+import type { FileNode } from "@/pages/Storage";
+
+// Helper functions (moved from lib/file-data)
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+};
+
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString() + " " + date.toLocaleTimeString();
+};
 
 interface Props {
   items: FileNode[];

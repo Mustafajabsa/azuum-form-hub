@@ -47,18 +47,23 @@ export const fileService = {
 
   // Download file
   downloadFile: (id: string) =>
-    Promise.resolve({
-      data: new Blob(["Mock file content"], {
-        type: "application/octet-stream",
-      }),
+    client.get(`/storage/files/${id}/download/`, {
+      responseType: "blob",
     }),
 
   // Upload file
-  uploadFile: (file: File, folderId?: string) =>
-    client.post("/storage/upload/", {
-      name: file.name,
-      folder_id: folderId || null,
-    }),
+  uploadFile: (file: File, folderId?: string) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (folderId) {
+      formData.append("folder_id", folderId);
+    }
+    return client.post("/storage/upload/", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
 
   // Move file to folder
   moveFile: (id: string, folderId: string | null) =>
@@ -120,6 +125,58 @@ export const folderService = {
   batchDeleteFolders: (folderIds: string[]) =>
     client.delete(`/storage/folders/batch_delete/`, {
       data: { folder_ids: folderIds },
+    }),
+};
+
+// ===== SEARCH SERVICE =====
+
+export const searchService = {
+  // Search files and folders
+  search: (query: string, folderId?: string) =>
+    client.get("/storage/search/", {
+      params: {
+        q: query,
+        ...(folderId && { folder_id: folderId }),
+      },
+    }),
+
+  // Get recent files
+  getRecentFiles: (limit = 10) =>
+    client.get("/storage/files/recent/", {
+      params: { limit },
+    }),
+};
+
+// ===== TRASH SERVICE =====
+
+export const trashService = {
+  // Get trash contents
+  getTrash: () => client.get("/storage/trash/"),
+
+  // Move items to trash
+  moveToTrash: (itemIds: string[], itemType: "file" | "folder") =>
+    client.post("/storage/trash/move/", {
+      item_ids: itemIds,
+      item_type: itemType,
+    }),
+
+  // Restore items from trash
+  restoreFromTrash: (itemIds: string[], itemType: "file" | "folder") =>
+    client.post("/storage/trash/restore/", {
+      item_ids: itemIds,
+      item_type: itemType,
+    }),
+
+  // Empty trash permanently
+  emptyTrash: () => client.delete("/storage/trash/empty/"),
+
+  // Delete items permanently from trash
+  deletePermanently: (itemIds: string[], itemType: "file" | "folder") =>
+    client.delete("/storage/trash/delete/", {
+      data: {
+        item_ids: itemIds,
+        item_type: itemType,
+      },
     }),
 };
 

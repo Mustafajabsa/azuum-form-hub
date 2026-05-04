@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
 
 interface ProtectedRouteProps {
@@ -18,20 +19,8 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return fallback || (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Authentication Required</h2>
-          <p className="text-muted-foreground mb-4">Please login to access this page</p>
-          <a 
-            href="/login" 
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-          >
-            Go to Login
-          </a>
-        </div>
-      </div>
-    );
+    // Automatically redirect to login page
+    return <Navigate to="/landing" replace />;
   }
 
   return <>{children}</>;

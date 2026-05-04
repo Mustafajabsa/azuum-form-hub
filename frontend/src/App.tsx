@@ -15,6 +15,7 @@ import FilledForms from "./pages/FilledForms";
 import Settings from "./pages/Settings";
 import Storage from "./pages/Storage";
 import NotFound from "./pages/NotFound";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,16 +38,86 @@ const App = () => {
               <Route path="/" element={<Index />} />
               <Route path="/landing" element={<Landing />} />
               <Route element={<MainLayout />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/storage" element={<Storage />} />
-                <Route path="/storage/:folderId" element={<Storage />} />
-                <Route path="/forms" element={<Forms />} />
-                <Route path="/forms/builder" element={<FormBuilder />} />
-                <Route path="/forms/preview" element={<FormPreview />} />
-                <Route path="/forms/filled" element={<FilledForms />} />
-                <Route path="/forms/user/:userId" element={<FilledForms />} />
-                <Route path="/filled-forms" element={<FilledForms />} />
-                <Route path="/settings" element={<Settings />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/storage"
+                  element={
+                    <ProtectedRoute>
+                      <Storage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/storage/:folderId"
+                  element={
+                    <ProtectedRoute>
+                      <Storage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/forms"
+                  element={
+                    <ProtectedRoute>
+                      <Forms />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/forms/builder"
+                  element={
+                    <ProtectedRoute>
+                      <FormBuilder />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/forms/preview"
+                  element={
+                    <ProtectedRoute>
+                      <FormPreview />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/forms/filled"
+                  element={
+                    <ProtectedRoute>
+                      <FilledForms />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/forms/user/:userId"
+                  element={
+                    <ProtectedRoute>
+                      <FilledForms />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/filled-forms"
+                  element={
+                    <ProtectedRoute>
+                      <FilledForms />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <ProtectedRoute>
+                      <Settings />
+                    </ProtectedRoute>
+                  }
+                />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

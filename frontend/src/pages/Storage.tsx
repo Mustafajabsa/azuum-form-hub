@@ -1,16 +1,56 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { ExplorerToolbar } from "@/components/explorer-toolbar";
 import { FileGrid } from "@/components/file-grid";
 import { DetailsPanel } from "@/components/details-panel";
-import { getNode, formatBytes, type FileNode } from "@/lib/file-data";
-import { getTrashFolder, moveToTrash, isItemTrashed } from "@/lib/trash-data";
+import {
+  fileService,
+  folderService,
+  searchService,
+  trashService,
+} from "@/api/services/storageService";
+import { FileItem, Folder } from "@/api/services/storageService";
+
+// Define FileNode type that matches what the UI components expect
+export interface FileNode {
+  id: string;
+  name: string;
+  kind: "file" | "folder";
+  size: number;
+  modified: string;
+  // Additional properties for files
+  original_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  folder_id?: string | null;
+  owner?: string;
+  uploaded_at?: string;
+  is_deleted?: boolean;
+  // Additional properties for folders
+  description?: string;
+  parent_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  // For folder structure
+  children?: FileNode[];
+}
+
+// Helper function to format bytes
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+};
 
 export default function Storage() {
   const { folderId } = useParams<{ folderId?: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [currentId, setCurrentId] = useState<string>(folderId || "root");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -18,11 +58,77 @@ export default function Storage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
-  const [trashUpdateTrigger, setTrashUpdateTrigger] = useState(0);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [query, setQuery] = useState("");
   const [back, setBack] = useState<string[]>([]);
   const [forward, setForward] = useState<string[]>([]);
+
+  // Query for current folder contents
+  const { data: currentFolder, isLoading: isLoadingFolder } = useQuery({
+    queryKey: ["folder", currentId],
+    queryFn: () => {
+      if (currentId === "trash") {
+        return trashService.getTrash();
+      } else if (currentId === "root") {
+        return folderService.getFolders();
+      } else {
+        return folderService.getFolder(currentId);
+      }
+    },
+    enabled: !!currentId,
+  });
+
+  // Query for files in current folder
+  const { data: files, isLoading: isLoadingFiles } = useQuery({
+    queryKey: ["files", currentId],
+    queryFn: () => fileService.getFiles(),
+    enabled: !!currentId && currentId !== "trash",
+  });
+
+  // Search query
+  const { data: searchResults } = useQuery({
+    queryKey: ["search", query],
+    queryFn: () => searchService.search(query),
+    enabled: !!query && query.length > 0,
+  });
+
+  // Mutations
+  const createFolderMutation = useMutation({
+    mutationFn: (data: { name: string; parentId?: string }) =>
+      folderService.createFolder(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folder"] });
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      setNewFolderName("");
+      setShowNewFolderDialog(false);
+    },
+  });
+
+  const uploadFilesMutation = useMutation({
+    mutationFn: (data: { files: File[]; folderId?: string }) => {
+      const promises = data.files.map((file) =>
+        fileService.uploadFile(file, data.folderId),
+      );
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folder"] });
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      setSelectedFiles(null);
+      setShowUploadDialog(false);
+    },
+  });
+
+  const moveToTrashMutation = useMutation({
+    mutationFn: (data: { itemIds: string[]; itemType: "file" | "folder" }) =>
+      trashService.moveToTrash(data.itemIds, data.itemType),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folder"] });
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+      setSelectedIds(new Set());
+    },
+  });
 
   const navigateToFolder = (id: string) => {
     if (id === currentId) return;
@@ -101,17 +207,12 @@ export default function Storage() {
   };
 
   const handleCreateFolder = () => {
-    if (!newFolderName.trim()) {
-      return; // Don't create folder with empty name
-    }
+    if (!newFolderName.trim()) return;
 
-    // In a real application, you would call an API here
-    // For now, we'll just show a success message and close the dialog
-    console.log(`Creating folder "${newFolderName}" in "${currentId}"`);
-
-    // Reset and close dialog
-    setNewFolderName("");
-    setShowNewFolderDialog(false);
+    createFolderMutation.mutate({
+      name: newFolderName,
+      parentId: currentId === "root" ? undefined : currentId,
+    });
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,78 +220,65 @@ export default function Storage() {
   };
 
   const handleUpload = () => {
-    if (!selectedFiles || selectedFiles.length === 0) {
-      return;
-    }
+    if (!selectedFiles || selectedFiles.length === 0) return;
 
-    // In a real application, you would upload files to an API here
-    console.log(`Uploading ${selectedFiles.length} files to "${currentId}":`);
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      console.log(`- ${file.name} (${file.size} bytes)`);
-    }
-
-    // Reset and close dialog
-    setSelectedFiles(null);
-    setShowUploadDialog(false);
+    const filesArray = Array.from(selectedFiles);
+    uploadFilesMutation.mutate({
+      files: filesArray,
+      folderId: currentId === "root" ? undefined : currentId,
+    });
   };
 
   const handleMoveToTrash = () => {
     if (selectedIds.size === 0) return;
 
-    // Get the actual FileNode objects for selected items
-    const itemsToMove: FileNode[] = [];
-    selectedIds.forEach((id) => {
-      const node = getNode(id);
-      if (node) {
-        itemsToMove.push(node);
-      }
+    const selectedIdsArray = Array.from(selectedIds);
+    // For simplicity, assume all selected items are files
+    // In a real implementation, you'd need to determine the type of each item
+    moveToTrashMutation.mutate({
+      itemIds: selectedIdsArray,
+      itemType: "file",
     });
-
-    if (itemsToMove.length === 0) return;
-
-    // Move items to trash
-    const trashCount = moveToTrash(itemsToMove);
-    console.log(`Moved ${trashCount} items to trash:`);
-    itemsToMove.forEach((item) => {
-      console.log(`- ${item.name} (${item.kind})`);
-    });
-
-    // Trigger re-render to update trash folder
-    setTrashUpdateTrigger((prev) => prev + 1);
-
-    // Clear selection after moving to trash
-    setSelectedIds(new Set());
   };
 
-  const current = useMemo(() => {
-    return currentId === "trash" ? getTrashFolder() : getNode(currentId);
-  }, [currentId, trashUpdateTrigger]);
+  // Combine folders and files into items array
   const items = useMemo(() => {
-    const children = current?.children ?? [];
-    // Filter out trashed items (except when viewing the trash folder itself)
-    const nonTrashedChildren =
-      currentId === "trash"
-        ? children
-        : children.filter((c) => !isItemTrashed(c.id));
+    const folderItems =
+      currentFolder?.data?.map((folder) => ({
+        ...folder,
+        kind: "folder" as const,
+        size: 0,
+        modified: folder.updated_at,
+      })) || [];
 
-    const filtered = query
-      ? nonTrashedChildren.filter((c) =>
-          c.name.toLowerCase().includes(query.toLowerCase()),
-        )
-      : nonTrashedChildren;
-    // Folders first, then by name
+    const fileItems =
+      files?.data?.map((file) => ({
+        ...file,
+        kind: "file" as const,
+        name: file.original_name,
+        size: file.file_size,
+        modified: file.uploaded_at,
+      })) || [];
+
+    const allItems = [...folderItems, ...fileItems];
+
+    // Filter by search query
+    const filtered =
+      query && searchResults?.data
+        ? allItems.filter((item) =>
+            searchResults.data.some((result) => result.id === item.id),
+          )
+        : allItems;
+
+    // Sort: folders first, then by name
     return [...filtered].sort((a, b) => {
       if (a.kind === "folder" && b.kind !== "folder") return -1;
       if (a.kind !== "folder" && b.kind === "folder") return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [current, query, currentId, trashUpdateTrigger]);
+  }, [currentFolder, files, searchResults, query]);
 
-  const selected =
-    selectedIds.size === 1
-      ? (getNode(Array.from(selectedIds)[0]) ?? null)
-      : null;
+  const selected = items.find((item) => selectedIds.has(item.id)) || null;
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">

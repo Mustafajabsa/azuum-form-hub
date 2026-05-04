@@ -9,10 +9,23 @@ import {
   File,
   type LucideIcon,
 } from "lucide-react";
-import type { FileKind } from "@/lib/file-data";
+
+// Define FileKind type locally
+type FileKind =
+  | "folder"
+  | "file"
+  | "image"
+  | "doc"
+  | "pdf"
+  | "code"
+  | "video"
+  | "audio"
+  | "archive"
+  | "other";
 
 const map: Record<FileKind, { Icon: LucideIcon; colorVar: string }> = {
   folder: { Icon: Folder, colorVar: "var(--folder)" },
+  file: { Icon: File, colorVar: "var(--muted-foreground)" },
   image: { Icon: FileImage, colorVar: "var(--file-image)" },
   doc: { Icon: FileText, colorVar: "var(--file-doc)" },
   pdf: { Icon: FileText, colorVar: "var(--destructive)" },
@@ -35,7 +48,10 @@ export function FileIcon({ kind, className, size = 20, filled }: Props) {
   return (
     <Icon
       className={className}
-      style={{ color: colorVar, fill: filled && kind === "folder" ? colorVar : undefined }}
+      style={{
+        color: colorVar,
+        fill: filled && kind === "folder" ? colorVar : undefined,
+      }}
       size={size}
       strokeWidth={1.75}
     />

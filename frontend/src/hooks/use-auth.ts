@@ -14,7 +14,7 @@ type AuthContextType = {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   register: (userData: any) => Promise<void>;
   updateProfile: (userData: any) => Promise<void>;
@@ -94,7 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Update profile mutation
   const updateProfileMutation = useMutation({
-    mutationFn: (userData: Partial<User>) => authService.updateProfile(userData),
+    mutationFn: (userData: Partial<User>) =>
+      authService.updateProfile(userData),
     onSuccess: (updatedUser) => {
       queryClient.setQueryData(["currentUser"], updatedUser);
     },
@@ -112,8 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   // Login function
-  const login = async (email: string, password: string) => {
-    await loginMutation.mutateAsync({ email, password });
+  const login = async (username: string, password: string) => {
+    await loginMutation.mutateAsync({ username, password });
   };
 
   // Logout function
@@ -138,7 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthContextType = {
     user: user || null,
-    isLoading: isLoading || loginMutation.isPending || registerMutation.isPending,
+    isLoading:
+      isLoading || loginMutation.isPending || registerMutation.isPending,
     isAuthenticated: !!tokenManager.getAccessToken(),
     login,
     logout,

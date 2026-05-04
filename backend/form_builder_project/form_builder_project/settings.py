@@ -34,7 +34,7 @@ SECRET_KEY = 'django-insecure-r^o&04zndy#_yr#zlfnn-v^)(ea9kd$rr=mq4^+6&@mzz4v(jg
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Custom users pointing
@@ -49,13 +49,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
+    'rest_framework_simplejwt',
     'forms',
     'storage',
     'submissions',
     'drf_spectacular',
     'accounts',
-    'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'djoser',
 ]
@@ -123,7 +124,19 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
 }
 
+# CORS settings
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# For development, allow all origins
+CORS_ALLOW_ALL_ORIGINS = True
+
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
