@@ -1,32 +1,19 @@
 import { useState } from "react";
-import { ChevronRight, HardDrive, Star, Clock, Trash2 } from "lucide-react";
-import { FileIcon } from "./FileIcon";
+import {
+  ChevronRight,
+  HardDrive,
+  Star,
+  Clock,
+  Trash2,
+  Cloud,
+} from "lucide-react";
+import { FileIcon } from "./file-icon";
+import { fileTree, type FileNode } from "@/lib/file-data";
 import { cn } from "@/lib/utils";
-
-interface FileNode {
-  id: string;
-  name: string;
-  kind:
-    | "folder"
-    | "image"
-    | "doc"
-    | "code"
-    | "video"
-    | "audio"
-    | "archive"
-    | "pdf"
-    | "other";
-  size?: number;
-  modified: string;
-  children?: FileNode[];
-  parentId?: string;
-}
 
 interface Props {
   currentId: string;
   onNavigate: (id: string) => void;
-  folders: FileNode[];
-  trashItems: FileNode[];
 }
 
 interface TreeRowProps {
@@ -102,13 +89,10 @@ function TreeRow({
   );
 }
 
-export function ExplorerSidebar({
-  currentId,
-  onNavigate,
-  folders,
-  trashItems,
-}: Props) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(["root"]));
+export function ExplorerSidebar({ currentId, onNavigate }: Props) {
+  const [expanded, setExpanded] = useState<Set<string>>(
+    new Set(["root", "documents", "projects", "lovable-app"]),
+  );
 
   const toggle = (id: string) => {
     setExpanded((prev) => {
@@ -125,25 +109,13 @@ export function ExplorerSidebar({
     { id: "downloads", label: "Recents", Icon: Clock },
   ];
 
-  // Create a root folder structure
-  const rootFolder: FileNode = {
-    id: "root",
-    name: "Home",
-    kind: "folder",
-    modified: new Date().toISOString(),
-    children: folders,
-  };
-
   return (
-    <aside
-      className="flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
-      style={{ width: "100%" }}
-    >
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <HardDrive size={16} />
         </div>
-        <span className="text-sm font-semibold">File Explorer</span>
+        <span className="text-sm font-semibold">Finder</span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
@@ -179,11 +151,6 @@ export function ExplorerSidebar({
           >
             <Trash2 size={15} className="text-muted-foreground" />
             Trash
-            {trashItems.length > 0 && (
-              <span className="ml-auto text-xs bg-muted px-1.5 py-0.5 rounded-full">
-                {trashItems.length}
-              </span>
-            )}
           </button>
         </div>
 
@@ -192,7 +159,7 @@ export function ExplorerSidebar({
             Folders
           </div>
           <TreeRow
-            node={rootFolder}
+            node={fileTree}
             depth={0}
             currentId={currentId}
             onNavigate={onNavigate}
@@ -205,7 +172,7 @@ export function ExplorerSidebar({
       <div className="border-t border-sidebar-border p-3 text-xs text-muted-foreground">
         <div className="mb-1 flex items-center justify-between">
           <span>Storage</span>
-          <span>Calculating...</span>
+          <span>248 / 512 GB</span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-sidebar-accent">
           <div className="h-full w-[48%] rounded-full bg-primary" />

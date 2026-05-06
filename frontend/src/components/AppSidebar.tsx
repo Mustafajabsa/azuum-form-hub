@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { NavLink } from "@/components/NavLink";
+import { UserPopup } from "@/components/UserPopup";
 import { useAuth } from "../hooks/use-auth";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../hooks/use-theme";
@@ -182,6 +183,11 @@ export function AppSidebar() {
             )}
           </Tooltip>
         </TooltipProvider>
+      </div>
+
+      {/* User Profile */}
+      <div className="p-2 border-t border-border">
+        <UserPopup />
       </div>
 
       {/* Logout Button */}
