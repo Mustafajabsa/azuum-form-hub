@@ -14,6 +14,7 @@ import FormPreview from "./pages/FormPreview";
 import FilledForms from "./pages/FilledForms";
 import Settings from "./pages/Settings";
 import Storage from "./pages/Storage";
+import ForgotPassword from "./pages/ForgotPassword";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -37,6 +38,7 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/landing" element={<Landing />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route element={<MainLayout />}>
                 <Route
                   path="/dashboard"

@@ -53,6 +53,7 @@ export interface AuthResponse {
 export interface User {
   id: string;
   email: string;
+  username: string;
   first_name?: string;
   last_name?: string;
   role: string;
@@ -142,7 +143,7 @@ export const authService = {
 
   // Request password reset
   requestPasswordReset: async (email: string): Promise<void> => {
-    await authClient.post("/password-reset/", { email });
+    await authClient.post("/auth/users/reset_password/", { email });
   },
 
   // Reset password with token

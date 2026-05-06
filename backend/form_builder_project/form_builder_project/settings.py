@@ -63,7 +63,9 @@ INSTALLED_APPS = [
 DJOSER = {
     'USER_ID_FIELD': 'username',
     'LOGIN_ID_FIELD': 'email',
+    'PASSWORD_RESET_CONFIRM_URL': 'password-reset/{uid}/{token}',
 }
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
