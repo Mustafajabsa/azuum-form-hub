@@ -7,9 +7,11 @@ import {
   LogOut,
   Sun,
   Moon,
+  PenTool,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { NavLink } from "@/components/NavLink";
+import { UserPopup } from "@/components/UserPopup";
 import { useAuth } from "../hooks/use-auth";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../hooks/use-theme";
@@ -43,6 +45,12 @@ const menuItems = [
     title: "Filled Forms",
     url: "/filled-forms",
     icon: FolderOpen,
+    adminOnly: false,
+  },
+  {
+    title: "Sign",
+    url: "/sign",
+    icon: PenTool,
     adminOnly: false,
   },
   { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
@@ -102,8 +110,7 @@ export function AppSidebar() {
               {menuItems
                 .filter((item) => !item.adminOnly || userRole === "admin")
                 .map((item) => {
-                  const isStorage = item.title === "Storage";
-                  const isDisabled = !isStorage;
+                  const isDisabled = false;
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -111,26 +118,22 @@ export function AppSidebar() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <SidebarMenuButton asChild>
-                              <div
-                                className={`flex items-center gap-3 px-3 py-2 rounded transition-colors ${
-                                  !open ? "justify-center" : ""
-                                } ${
-                                  isDisabled
-                                    ? "opacity-50 blur-sm cursor-not-allowed"
-                                    : "hover:bg-sidebar-accent cursor-pointer"
-                                } ${
-                                  !isDisabled &&
-                                  "bg-sidebar-accent text-sidebar-primary font-medium"
-                                }`}
-                                onClick={() => {
-                                  if (!isDisabled) {
-                                    navigate(item.url);
+                              <NavLink
+                                to={item.url}
+                                className={`flex items-center gap-3 w-full px-3 py-2 rounded
+                                  transition-colors text-muted-foreground
+                                  ${
+                                    isDisabled
+                                      ? "cursor-not-allowed"
+                                      : "cursor-pointer"
                                   }
-                                }}
+                                  hover:bg-sidebar-accent hover:text-sidebar-primary
+                                `}
+                                activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
                               >
                                 <item.icon className="h-5 w-5 flex-shrink-0" />
                                 {open && <span>{item.title}</span>}
-                              </div>
+                              </NavLink>
                             </SidebarMenuButton>
                           </TooltipTrigger>
                           {!open && (
@@ -182,6 +185,11 @@ export function AppSidebar() {
             )}
           </Tooltip>
         </TooltipProvider>
+      </div>
+
+      {/* User Profile */}
+      <div className="p-2 border-t border-border">
+        <UserPopup />
       </div>
 
       {/* Logout Button */}

@@ -9,6 +9,7 @@ import {
   User,
   File,
   Check,
+  PenTool,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -17,6 +18,14 @@ import { useTheme } from "@/hooks/use-theme";
 import { Moon, Sun } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
+import { SignDocument } from "@/components/SignDocument";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface User {
   id: string;
@@ -46,6 +55,19 @@ interface FormSubmission {
   createdAt: string;
   isAssigned?: boolean;
   submissionCount?: number;
+  type?: string;
+  submissions?: number;
+}
+
+interface SignDocumentProps {
+  submissionId: string;
+  formTitle: string;
+  onSignComplete?: (signatureData: {
+    signatureText: string;
+    signatureImage?: File;
+    signedAt: string;
+    signedBy: string;
+  }) => void;
 }
 
 interface UserStats {
@@ -82,7 +104,7 @@ const FilledForms = () => {
     // Generate Excel file and trigger download
     XLSX.writeFile(
       workbook,
-      `${user.user.name}_forms_${new Date().toISOString().split("T")[0]}.xlsx`
+      `${user.user.name}_forms_${new Date().toISOString().split("T")[0]}.xlsx`,
     );
   };
 
@@ -137,7 +159,7 @@ const FilledForms = () => {
           email: userEmail,
           role: "User",
           avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
-            userEmail.split("@")[0]
+            userEmail.split("@")[0],
           )}&background=random`,
         };
 
@@ -179,7 +201,7 @@ const FilledForms = () => {
             email: userEmail,
             role: "User",
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
-              userEmail.split("@")[0]
+              userEmail.split("@")[0],
             )}&background=random`,
           };
           userMap.set(userEmail, {
@@ -216,7 +238,7 @@ const FilledForms = () => {
 
         // Get submissions from localStorage
         const savedSubmissions = JSON.parse(
-          localStorage.getItem("formSubmissions") || "[]"
+          localStorage.getItem("formSubmissions") || "[]",
         ) as FormSubmission[];
 
         // Add some mock data for demonstration
@@ -285,14 +307,14 @@ const FilledForms = () => {
   const handleDownload = (submission: FormSubmission) => {
     const dataStr = JSON.stringify(submission.data, null, 2);
     const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(
-      dataStr
+      dataStr,
     )}`;
 
     const link = document.createElement("a");
     link.setAttribute("href", dataUri);
     link.setAttribute(
       "download",
-      `${submission.formTitle.replace(/\s+/g, "_")}_${submission.id}.json`
+      `${submission.formTitle.replace(/\s+/g, "_")}_${submission.id}.json`,
     );
     document.body.appendChild(link);
     link.click();
@@ -474,77 +496,68 @@ const FilledForms = () => {
                             {submission.formTitle}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           <div className="text-sm text-gray-500 dark:text-gray-400">
                             {new Date(submission.createdAt).toLocaleString()}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <span
                             className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                               submission.status === "Deployed"
                                 ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
                                 : submission.status === "Drafted"
-                                ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200"
-                                : submission.status === "Edited"
-                                ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
-                                : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+                                  ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200"
+                                  : submission.status === "Edited"
+                                    ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+                                    : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                             }`}
                           >
                             {submission.status}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {submission.isAssigned ? "Assigned" : "Created"}
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            {submission.type}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {submission.submissionCount || 0}
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            {submission.submissions}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {
-                              // Navigate to view the form
-                              navigate(`/forms/view/${submission.formId}`, {
-                                state: { form: submission },
-                              });
-                            }}
-                            className="text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300"
+                            onClick={() => handleView(submission)}
                           >
                             <Eye className="h-4 w-4 mr-1" />
                             View Form
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
+                            className="text-green-600 dark:text-green-400 border-green-200 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/50 hover:text-green-700 dark:hover:text-green-300"
                             onClick={() => {
-                              // Navigate to form submissions
-                              navigate(
-                                `/forms/submissions/${submission.formId}`,
-                                {
-                                  state: { form: submission },
-                                }
+                              // Open sign dialog - simplified for now
+                              alert(
+                                `Sign functionality for ${submission.formTitle} would open here`,
                               );
                             }}
-                            disabled={
-                              !submission.submissionCount ||
-                              submission.submissionCount === 0
-                            }
                           >
-                            <FileText className="h-4 w-4 mr-1" />
-                            Submissions
+                            <PenTool className="h-4 w-4 mr-1" />
+                            Sign
                           </Button>
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td
-                        colSpan={6}
-                        className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400"
-                      >
-                        No forms found for this user.
+                      <td colSpan={6} className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          No forms found for this user.
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -650,7 +663,7 @@ const FilledForms = () => {
                       onClick={() => {
                         setSelectedUser(user);
                         navigate(
-                          `/forms/user/${encodeURIComponent(user.userId)}`
+                          `/forms/user/${encodeURIComponent(user.userId)}`,
                         );
                       }}
                     >

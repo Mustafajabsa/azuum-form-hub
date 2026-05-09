@@ -7,8 +7,6 @@ import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { ExplorerToolbar } from "@/components/explorer-toolbar";
 import { FileGrid } from "@/components/file-grid";
 import { DetailsPanel } from "@/components/details-panel";
-import { ShareDialog } from "@/components/share-dialog";
-import { ShareLinkDialog } from "@/components/share-link-dialog";
 import {
   fileService,
   folderService,
@@ -17,7 +15,6 @@ import {
 } from "@/api/services/storageService";
 import { FileItem, Folder } from "@/api/services/storageService";
 import { FileKind, FileNode, getFileKind } from "@/components/file-utils";
-import { useClipboard } from "@/contexts/ClipboardContext";
 
 export type { FileNode } from "@/components/file-utils";
 
@@ -34,12 +31,6 @@ export default function Storage() {
   const { folderId } = useParams<{ folderId?: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const {
-    copyToClipboard,
-    cutToClipboard,
-    pasteFromClipboard,
-    hasClipboardContent,
-  } = useClipboard();
 
   const [currentId, setCurrentId] = useState<string>(folderId || "root");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -67,14 +58,9 @@ export default function Storage() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [newName, setNewName] = useState("");
-  const [showCompressDialog, setShowCompressDialog] = useState(false);
-  const [compressFileName, setCompressFileName] = useState("");
   const [draggedItems, setDraggedItems] = useState<FileNode[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [showShareDialog, setShowShareDialog] = useState(false);
-  const [showShareLinkDialog, setShowShareLinkDialog] = useState(false);
-  const [shareData, setShareData] = useState<any>(null);
 
   // Query for files and folders from backend API
   const { data: filesData, isLoading: isLoadingFiles } = useQuery({
@@ -288,93 +274,25 @@ export default function Storage() {
       setIsDragging(false);
       setDropTarget(null);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error("Move failed:", error);
-      alert("Move failed. Please try again.");
+      console.error("Error response:", error.response);
+      console.error("Error status:", error.response?.status);
+      console.error("Error data:", error.response?.data);
+
+      // Try to provide more specific error message
+      let errorMessage = "Move failed. Please try again.";
+      if (error.response?.data?.error) {
+        errorMessage = `Move failed: ${error.response.data.error}`;
+      } else if (error.response?.data?.message) {
+        errorMessage = `Move failed: ${error.response.data.message}`;
+      } else if (error.message) {
+        errorMessage = `Move failed: ${error.message}`;
+      }
+
+      alert(errorMessage);
       setIsDragging(false);
       setDropTarget(null);
-    },
-  });
-
-  const compressMutation = useMutation({
-    mutationFn: (data: {
-      paths: string[];
-      zipName: string;
-      destination?: string;
-    }) => fileService.compressFiles(data.paths, data.zipName, data.destination),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["files", currentId] });
-      queryClient.invalidateQueries({ queryKey: ["files"] });
-      setShowCompressDialog(false);
-      setCompressFileName("");
-    },
-    onError: (error) => {
-      console.error("Compression failed:", error);
-      alert("Compression failed. Please try again.");
-    },
-  });
-
-  const shareFileMutation = useMutation({
-    mutationFn: (data: {
-      filePath: string;
-      expiresIn?: number;
-      maxAccess?: number;
-      is_viewable?: boolean;
-    }) =>
-      fileService.shareFile(
-        data.filePath,
-        data.expiresIn,
-        data.maxAccess,
-        data.is_viewable,
-      ),
-    onSuccess: (response) => {
-      console.log("Share successful:", response.data);
-      setShareData(response.data);
-      setShowShareLinkDialog(true);
-    },
-    onError: (error) => {
-      console.error("Share failed:", error);
-      alert("Failed to generate share link. Please try again.");
-    },
-  });
-
-  const mixedShareMutation = useMutation({
-    mutationFn: (data: {
-      paths: string[];
-      expiresIn?: number;
-      maxAccess?: number;
-      is_viewable?: boolean;
-    }) =>
-      fileService.mixedShare(
-        data.paths,
-        data.expiresIn,
-        data.maxAccess,
-        data.is_viewable,
-      ),
-    onSuccess: (response) => {
-      console.log("Mixed share successful:", response.data);
-      // Handle response with multiple shared items
-      if (response.data.shared && response.data.shared.length > 0) {
-        // Create master link with all tokens
-        const tokens = response.data.shared
-          .map((item: any) => item.token)
-          .join(",");
-        const masterLink = `${window.location.origin}/share/${tokens}`;
-
-        // Create master link data structure
-        const masterLinkData = {
-          share_url: masterLink,
-          shared: response.data.shared,
-          isMasterLink: true,
-        };
-
-        setShareData(masterLinkData); // Store master link data
-        setShowShareLinkDialog(true);
-      }
-    },
-    onError: (error) => {
-      console.error("Mixed share failed:", error);
-      alert("Failed to generate share links. Please try again.");
     },
   });
 
@@ -888,165 +806,6 @@ export default function Storage() {
     });
   };
 
-  // Clipboard handlers
-  const handleCopy = () => {
-    if (selectedIds.size === 0) return;
-
-    const selectedItems = items.filter((item) => selectedIds.has(item.id));
-    const clipboardItems = selectedItems.map(
-      (item): { path: string; name: string; type: "file" | "folder" } => ({
-        path: (item as any).path || item.name,
-        name: item.name,
-        type: item.kind === "folder" ? "folder" : "file",
-      }),
-    );
-
-    copyToClipboard(clipboardItems);
-  };
-
-  const handleCut = () => {
-    if (selectedIds.size === 0) return;
-
-    const selectedItems = items.filter((item) => selectedIds.has(item.id));
-    const clipboardItems = selectedItems.map(
-      (item): { path: string; name: string; type: "file" | "folder" } => ({
-        path: (item as any).path || item.name,
-        name: item.name,
-        type: item.kind === "folder" ? "folder" : "file",
-      }),
-    );
-
-    cutToClipboard(clipboardItems);
-  };
-
-  const handlePaste = async () => {
-    if (!hasClipboardContent) return;
-
-    try {
-      await pasteFromClipboard(currentId === "root" ? "" : currentId);
-
-      // Refresh the files query to show the pasted items
-      queryClient.invalidateQueries({ queryKey: ["files", currentId] });
-      queryClient.invalidateQueries({ queryKey: ["files"] });
-    } catch (error) {
-      console.error("Paste failed:", error);
-      alert("Paste failed. Please try again.");
-    }
-  };
-
-  const handleCompress = () => {
-    if (selectedIds.size === 0) return;
-
-    const selectedItems = items.filter((item) => selectedIds.has(item.id));
-    const pathsToCompress = selectedItems.map(
-      (item) => (item as any).path || item.name,
-    );
-
-    if (pathsToCompress.length === 0) {
-      alert("No valid items selected for compression");
-      return;
-    }
-
-    // Default zip name based on selection
-    const defaultZipName =
-      selectedItems.length === 1
-        ? `${selectedItems[0].name}_archive`
-        : `archive_${new Date().toISOString().split("T")[0]}`;
-
-    setCompressFileName(defaultZipName);
-    setShowCompressDialog(true);
-  };
-
-  const handleCompressConfirm = async () => {
-    if (!compressFileName.trim()) return;
-
-    const selectedItems = items.filter((item) => selectedIds.has(item.id));
-    const pathsToCompress = selectedItems.map(
-      (item) => (item as any).path || item.name,
-    );
-
-    if (pathsToCompress.length === 0) {
-      alert("No valid items selected for compression");
-      return;
-    }
-
-    compressMutation.mutate({
-      paths: pathsToCompress,
-      zipName: compressFileName,
-      destination: currentId === "root" ? "" : currentId,
-    });
-  };
-
-  // Wrapper function for ExplorerToolbar
-  const handleShareClick = () => {
-    handleShare("external");
-  };
-
-  const handleShare = (type: "external" | "internal") => {
-    if (selectedIds.size === 0) {
-      alert("Please select items to share");
-      return;
-    }
-
-    const selectedItems = items.filter((item) => selectedIds.has(item.id));
-
-    if (type === "external") {
-      if (selectedIds.size === 0) {
-        alert("Please select items to share");
-        return;
-      }
-
-      // Show dialog for both single and multiple items
-      setShowShareDialog(true);
-    } else {
-      alert("Internal sharing is not implemented yet");
-    }
-  };
-
-  const handleShareConfirm = (
-    expiresIn?: number,
-    maxAccess?: number,
-    isViewable?: boolean,
-  ) => {
-    const selectedItems = items.filter((item) => selectedIds.has(item.id));
-
-    if (selectedItems.length === 1) {
-      // Single item - use single file share endpoint
-      const selectedItem = selectedItems[0];
-      const filePath = (selectedItem as any).path || selectedItem.name;
-
-      shareFileMutation.mutate({
-        filePath,
-        expiresIn,
-        maxAccess,
-        is_viewable: isViewable,
-      });
-    } else {
-      // Multiple items - use mixed share endpoint
-      const paths = selectedItems.map(
-        (item) => (item as any).path || item.name,
-      );
-
-      mixedShareMutation.mutate({
-        paths,
-        expiresIn,
-        maxAccess,
-        is_viewable: isViewable,
-      });
-    }
-  };
-
-  const handleSelectAll = () => {
-    if (selectedIds.size === items.length && items.length > 0) {
-      // Deselect all if all are already selected
-      setSelectedIds(new Set());
-    } else if (items.length > 0) {
-      // Select all items
-      const allItemIds = items.map((item) => item.id);
-      setSelectedIds(new Set(allItemIds));
-    }
-  };
-
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, node: FileNode) => {
     console.log("Drag started:", node.name);
@@ -1084,44 +843,6 @@ export default function Storage() {
     const target = e.currentTarget as HTMLElement;
     if (!target.contains(e.relatedTarget as Node)) {
       setDropTarget(null);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent, targetNode: FileNode) => {
-    e.preventDefault();
-
-    if (!targetNode || targetNode.kind !== "folder") {
-      console.log("Drop target is not a folder");
-      return;
-    }
-
-    console.log("Dropping on folder:", targetNode.name);
-    console.log("Dragged items:", draggedItems);
-
-    if (draggedItems.length === 0) {
-      console.log("No items to move");
-      return;
-    }
-
-    // Get paths of all items to move
-    const pathsToMove = draggedItems.map(
-      (item) => (item as any).path || item.name,
-    );
-    const destinationPath = (targetNode as any).path || targetNode.name;
-
-    console.log("Moving paths:", pathsToMove);
-    console.log("To destination:", destinationPath);
-
-    // Move items using mixed move API
-    mixedMoveMutation.mutate({
-      paths: pathsToMove,
-      destination: destinationPath,
-    });
-  };
-
-  // Combine files and folders into items array based on API response
-  const items = useMemo(() => {
-    let allItems: FileNode[] = [];
 
     if (currentId === "trash" && trashData?.data) {
       // Handle trash data
@@ -1335,14 +1056,6 @@ export default function Storage() {
           onDelete={handleDelete}
           onDownload={handleDownload}
           onRename={handleRename}
-          onCopy={handleCopy}
-          onCut={handleCut}
-          onPaste={handlePaste}
-          canPaste={hasClipboardContent}
-          onCompress={handleCompress}
-          onSelectAll={handleSelectAll}
-          onShare={handleShareClick}
-          items={items}
         />
 
         <main className="flex min-h-0 flex-1 flex-col bg-background">
@@ -1768,45 +1481,6 @@ export default function Storage() {
         </div>
       )}
 
-      {/* Compress Dialog */}
-      {showCompressDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background p-6 rounded-lg w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold mb-4 text-foreground">
-              Compress Files
-            </h3>
-            <p className="text-sm text-muted-foreground mb-6">
-              Enter a name for the zip file:
-            </p>
-            <input
-              type="text"
-              value={compressFileName}
-              onChange={(e) => setCompressFileName(e.target.value)}
-              placeholder="archive"
-              className="w-full px-3 py-2 text-sm bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-foreground"
-              autoFocus
-            />
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowCompressDialog(false)}
-                className="px-4 py-2 text-sm bg-muted/50 hover:bg-muted border border-border/50 rounded-lg transition-all hover:shadow-sm text-foreground"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCompressConfirm}
-                disabled={
-                  !compressFileName.trim() || compressMutation.isPending
-                }
-                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {compressMutation.isPending ? "Compressing..." : "Compress"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Rename Dialog */}
       {showRenameDialog && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
@@ -1896,47 +1570,6 @@ export default function Storage() {
               : "Download complete!"}
           </p>
         </div>
-      )}
-
-      {/* Share Dialog */}
-      <ShareDialog
-        open={showShareDialog}
-        onOpenChange={setShowShareDialog}
-        onShare={handleShareConfirm}
-        fileName={
-          selectedIds.size === 1
-            ? items.find((item) => selectedIds.has(item.id))?.name || ""
-            : ""
-        }
-        itemCount={selectedIds.size}
-      />
-
-      {/* Share Link Dialog */}
-      {shareData && (
-        <ShareLinkDialog
-          open={showShareLinkDialog}
-          onOpenChange={setShowShareLinkDialog}
-          shareUrl={
-            shareData.share_url ||
-            (shareData.shared && shareData.shared[0]?.share_url) ||
-            ""
-          }
-          fileName={
-            selectedIds.size === 1
-              ? items.find((item) => selectedIds.has(item.id))?.name || ""
-              : ""
-          }
-          expiresAt={
-            shareData.expires_at ||
-            (shareData.shared && shareData.shared[0]?.expires_at)
-          }
-          maxAccess={
-            shareData.max_access ||
-            (shareData.shared && shareData.shared[0]?.max_access)
-          }
-          sharedItems={shareData.shared}
-          isMasterLink={shareData.isMasterLink}
-        />
       )}
     </div>
   );

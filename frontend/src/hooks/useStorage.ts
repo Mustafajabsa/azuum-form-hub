@@ -6,6 +6,7 @@ import {
   FileItem,
   Folder,
 } from "@/api/services/storageService";
+import client from "@/api/client";
 
 // ===== FILE HOOKS =====
 
@@ -112,7 +113,7 @@ export const useCreateFolder = () => {
       name: string;
       description?: string;
       parentId?: string;
-    }) => folderService.createFolder(name, description, parentId),
+    }) => folderService.createFolder({ name, description, parentId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
     },
@@ -167,6 +168,81 @@ export const useUploadFiles = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["folderContents"] });
     },
+  });
+};
+
+// ===== TRASH HOOKS =====
+
+export const useMoveToTrash = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemIds: string[]) =>
+      client.post("/storage/trash/move-to-trash/", { item_ids: itemIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["folderContents"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+    },
+  });
+};
+
+export const useTrashContents = () => {
+  return useQuery({
+    queryKey: ["trash"],
+    queryFn: () => client.get("/storage/trash/"),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+};
+
+export const useEmptyTrash = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => client.delete("/storage/trash/"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+    },
+  });
+};
+
+export const useRestoreFromTrash = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemIds: string[]) =>
+      client.post("/storage/trash/restore/", { item_ids: itemIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["folderContents"] });
+    },
+  });
+};
+
+// ===== FOLDER CONTENTS HOOK =====
+
+export const useFolderContents = (folderId: string = "root") => {
+  return useQuery({
+    queryKey: ["folderContents", folderId],
+    queryFn: () => client.get(`/storage/folders/${folderId}/contents/`),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!folderId,
+  });
+};
+
+// ===== SEARCH HOOK =====
+
+export const useSearchItems = (query: string, folderId?: string) => {
+  return useQuery({
+    queryKey: ["search", query, folderId],
+    queryFn: () => {
+      const params = new URLSearchParams({ q: query });
+      if (folderId) params.append("folder_id", folderId);
+      return client.get(`/storage/search/?${params}`);
+    },
+    enabled: !!query && query.length > 0,
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 };

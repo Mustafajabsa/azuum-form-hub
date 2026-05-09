@@ -1,45 +1,141 @@
 import { useState } from "react";
+import { Navigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, X } from "lucide-react";
 import { ContactForm } from "@/components/ContactForm";
+import { useAuth } from "@/hooks/use-auth";
 
 const Landing = () => {
+  const {
+    login,
+    register,
+    isAuthenticated,
+    isLoggingIn,
+    isRegistering,
+    loginError,
+    registerError,
+  } = useAuth();
   const [activeTab, setActiveTab] = useState("login");
   const [showContact, setShowContact] = useState(false);
   const [hasWebsite, setHasWebsite] = useState(false);
   const [formData, setFormData] = useState({
-    // Login form
+    // Shared fields
     username: "",
     password: "",
+    passwordConfirm: "",
 
-    // Signup form
+    // Signup only fields
+    email: "",
     fullName: "",
     organization: "",
     role: "",
-    email: "",
     country: "",
     website: "",
   });
 
+  // Helper function to get user-friendly error messages
+  const getErrorMessage = (error: any): string => {
+    if (!error) return "";
+
+    // Handle network errors
+    if (error.code === "NETWORK_ERROR" || !error.response) {
+      return "Network error. Please check your internet connection and try again.";
+    }
+
+    // Handle HTTP status codes
+    const status = error.response?.status;
+    const data = error.response?.data;
+
+    switch (status) {
+      case 400:
+        // Bad Request - validation errors
+        if (data?.non_field_errors) {
+          return data.non_field_errors[0] || "Invalid input data.";
+        }
+        if (data?.detail) {
+          return data.detail;
+        }
+        return "Please check your input and try again.";
+
+      case 401:
+        // Unauthorized
+        if (data?.detail) {
+          // Handle specific Django REST framework messages
+          if (data.detail.includes("No active account")) {
+            return "Invalid username or password.";
+          }
+          if (data.detail.includes("Invalid credentials")) {
+            return "Invalid username or password.";
+          }
+          if (data.detail.includes("credentials")) {
+            return "Invalid username or password.";
+          }
+          return data.detail;
+        }
+        return "Invalid username or password.";
+
+      case 403:
+        // Forbidden
+        return "You don't have permission to perform this action.";
+
+      case 404:
+        // Not Found
+        return "The requested resource was not found.";
+
+      case 429:
+        // Too Many Requests
+        return "Too many requests. Please wait a moment and try again.";
+
+      case 500:
+        // Internal Server Error
+        return "Server error. Please try again later.";
+
+      default:
+        // Generic error
+        if (data?.detail) {
+          return data.detail;
+        }
+        if (data?.message) {
+          return data.message;
+        }
+        return "An error occurred. Please try again.";
+    }
+  };
+
+  // Redirect authenticated users to dashboard
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle login logic
-    console.log("Login attempt:", {
-      username: formData.username,
-      password: formData.password,
-    });
+    // Use real authentication API
+    login(formData.username, formData.password);
   };
 
   const handleSignup = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle signup logic
-    console.log("Signup data:", {
-      ...formData,
-      website: hasWebsite ? formData.website : undefined,
-    });
+
+    // Validate password confirmation
+    if (formData.password !== formData.passwordConfirm) {
+      // You might want to show an error message here
+      console.error("Passwords do not match");
+      return;
+    }
+
+    // Use real authentication API
+    const signupData = {
+      email: formData.email,
+      username: formData.username,
+      password: formData.password,
+      password_confirm: formData.passwordConfirm,
+      first_name: formData.fullName,
+      // Add other fields as needed by your API
+    };
+    register(signupData);
   };
 
   return (
@@ -75,6 +171,7 @@ const Landing = () => {
                 <Label htmlFor="username">Username</Label>
                 <Input
                   id="username"
+                  type="text"
                   placeholder="Enter your username"
                   value={formData.username}
                   onChange={(e) =>
@@ -96,9 +193,26 @@ const Landing = () => {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full mt-4">
-                Login
+              {loginError && (
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-md text-sm">
+                  {getErrorMessage(loginError)}
+                </div>
+              )}
+              <Button
+                type="submit"
+                className="w-full mt-4"
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? "Signing in..." : "Login"}
               </Button>
+              <div className="text-center mt-4">
+                <Link
+                  to="/forgot-password"
+                  className="text-sm text-primary hover:underline"
+                >
+                  Forgot Password?
+                </Link>
+              </div>
             </form>
           </TabsContent>
 
@@ -158,6 +272,20 @@ const Landing = () => {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="Choose a username"
+                  value={formData.username}
+                  onChange={(e) =>
+                    setFormData({ ...formData, username: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="country">Country</Label>
                 <Input
                   id="country"
@@ -199,8 +327,49 @@ const Landing = () => {
                 </div>
               )}
 
-              <Button type="submit" className="w-full mt-4">
-                Create Account
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Create a password"
+                  value={formData.password}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="passwordConfirm">Confirm Password</Label>
+                <Input
+                  id="passwordConfirm"
+                  type="password"
+                  placeholder="Confirm your password"
+                  value={formData.passwordConfirm}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      passwordConfirm: e.target.value,
+                    })
+                  }
+                  required
+                />
+              </div>
+
+              {registerError && (
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-md text-sm">
+                  {getErrorMessage(registerError)}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full mt-4"
+                disabled={isRegistering}
+              >
+                {isRegistering ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
           </TabsContent>

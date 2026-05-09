@@ -127,7 +127,7 @@ const Settings = () => {
 
   const handleLogoChange = (
     type: LogoType,
-    event: ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;

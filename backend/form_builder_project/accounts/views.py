@@ -1,23 +1,72 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import get_user_model
 from .serializers import RegisterSerializer, UserSerializer, ChangePasswordSerializer
 from storage.throttles import RegisterRateThrottle, LoginRateThrottle
+from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter
 
 User = get_user_model()
 
+class UserDeleteAPIView(APIView):
+    """Delete a user account."""
+    authentication_classes = [JWTAuthentication]
+    permission_classes     = [IsAdminUser]
+    
+    @extend_schema(
+        summary="Delete a user account",
+        description="Permanently removes a user from the system. Restricted to Administrators only.",
+        responses={
+            204: None,  # Success with no content
+            400: OpenApiTypes.OBJECT, # For the "cannot delete self" error
+            403: OpenApiTypes.OBJECT, # Permission denied
+            404: OpenApiTypes.OBJECT, # User not found
+        },
+        # If your URL uses a variable like <int:id>, it shows up here:
+        parameters=[
+            OpenApiParameter(
+                name='id', 
+                type=int, 
+                location=OpenApiParameter.PATH, 
+                description="The unique ID of the user to delete"
+            )
+        ]
+    )
+    def delete(self, request, id):
+
+        target_user = get_object_or_404(User, id=id)
+        if request.user.id == target_user.id:
+            return Response(
+                {"error": "You cannot delete your own admin account."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        target_user.delete()
+        return Response(
+            {"message": f"User {target_user.username} deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 class RegisterAPIView(APIView):
-    """Register a new user."""
-    authentication_classes = []    # no auth required to register
-    permission_classes     = [AllowAny]
+    """
+    Register a new user. 
+    Restricted: Only Admins can access this endpoint.
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes     = [IsAdminUser]
     throttle_classes       = [RegisterRateThrottle]
-
+    
+    @extend_schema(
+        description="Create a new user account. Only accessible by administrators.",
+        request=RegisterSerializer,
+        responses={201: UserSerializer}
+    )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
@@ -112,7 +161,11 @@ class MeAPIView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
-
+    
+    @extend_schema(
+        request=UserSerializer,
+        responses={200: UserSerializer}
+    )
     def patch(self, request):
         """Update user details."""
         serializer = UserSerializer(
@@ -131,6 +184,10 @@ class ChangePasswordAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes     = [IsAuthenticated]
 
+    @extend_schema(
+        request=ChangePasswordSerializer,
+        responses={200: {"detail": "Password changed successfully"}}
+    )
     def post(self, request):
         serializer = ChangePasswordSerializer(data=request.data)
         if serializer.is_valid():
