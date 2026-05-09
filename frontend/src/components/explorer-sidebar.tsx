@@ -6,9 +6,12 @@ import {
   Clock,
   Trash2,
   Cloud,
+  Share2,
 } from "lucide-react";
 import { FileIcon } from "./file-icon";
-import { fileTree, type FileNode } from "@/lib/file-data";
+import { useQuery } from "@tanstack/react-query";
+import { fileService } from "@/api/services/storageService";
+import { FileKind, FileNode, getFileKind } from "@/components/file-utils";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -36,14 +39,14 @@ function TreeRow({
   const isFolder = node.kind === "folder";
   const isOpen = expanded.has(node.id);
   const isActive = currentId === node.id;
-  const folders = node.children?.filter((c) => c.kind === "folder") ?? [];
+  const children = node.children || [];
 
   if (!isFolder) return null;
 
   return (
     <div>
       <button
-        onClick={() => onNavigate(node.id)}
+        onClick={() => onNavigate((node as any).path || node.id)}
         className={cn(
           "group flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-sm transition-colors",
           "hover:bg-sidebar-accent",
@@ -61,7 +64,7 @@ function TreeRow({
           }}
           className={cn(
             "flex h-4 w-4 items-center justify-center rounded transition-transform",
-            folders.length === 0 && "invisible",
+            children.length === 0 && "invisible",
             isOpen && "rotate-90",
           )}
         >
@@ -70,9 +73,9 @@ function TreeRow({
         <FileIcon kind="folder" size={16} filled />
         <span className="truncate">{node.name}</span>
       </button>
-      {isOpen && folders.length > 0 && (
+      {isOpen && children.length > 0 && (
         <div>
-          {folders.map((child) => (
+          {children.map((child) => (
             <TreeRow
               key={child.id}
               node={child}
@@ -90,9 +93,63 @@ function TreeRow({
 }
 
 export function ExplorerSidebar({ currentId, onNavigate }: Props) {
-  const [expanded, setExpanded] = useState<Set<string>>(
-    new Set(["root", "documents", "projects", "lovable-app"]),
-  );
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(["root"]));
+
+  // Query for folders from backend
+  const { data: filesData, isLoading } = useQuery({
+    queryKey: ["files", "root"],
+    queryFn: () => fileService.getFiles(),
+  });
+
+  // Query for storage statistics
+  const { data: storageStats } = useQuery({
+    queryKey: ["storageStats"],
+    queryFn: async () => {
+      console.log("=== FETCHING STORAGE STATS ===");
+      try {
+        const response = await fileService.getStorageStats();
+        console.log("Storage stats API response:", response);
+        console.log("Storage stats data:", response.data);
+        console.log("=== END FETCHING STORAGE STATS ===");
+        return response;
+      } catch (error) {
+        console.error("Storage stats API error:", error);
+        throw error;
+      }
+    },
+  });
+
+  // Debug: Log the API data
+  console.log("ExplorerSidebar - filesData:", filesData);
+  console.log("ExplorerSidebar - directories:", filesData?.data?.directories);
+
+  // Recursive function to build folder tree with arbitrary nesting
+  const buildFolderTree = (directories: any[]): FileNode[] => {
+    return (
+      directories?.map((dir: any) => ({
+        id: dir.id,
+        name: dir.name,
+        kind: "folder" as FileKind,
+        size: 0,
+        modified: new Date().toISOString(),
+        path: dir.path,
+        children: buildFolderTree(dir.directories || []),
+      })) || []
+    );
+  };
+
+  // Convert API data to FileNode structure
+  const fileTree: FileNode = {
+    id: "root",
+    name: "Home",
+    kind: "folder",
+    size: 0,
+    modified: new Date().toISOString(),
+    children: buildFolderTree(filesData?.data?.directories || []),
+  };
+
+  // Debug: Log the final fileTree
+  console.log("ExplorerSidebar - fileTree:", fileTree);
 
   const toggle = (id: string) => {
     setExpanded((prev) => {
@@ -110,7 +167,7 @@ export function ExplorerSidebar({ currentId, onNavigate }: Props) {
   ];
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-44 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <HardDrive size={16} />
@@ -136,6 +193,56 @@ export function ExplorerSidebar({ currentId, onNavigate }: Props) {
               {label}
             </button>
           ))}
+
+          {/* Share section with toggle */}
+          <div>
+            <button
+              onClick={() => toggle("share")}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
+                (currentId === "shared-received" ||
+                  currentId === "shared-sent") &&
+                  "bg-sidebar-accent font-medium",
+              )}
+            >
+              <ChevronRight
+                size={12}
+                className={cn(
+                  "transition-transform",
+                  expanded.has("share") && "rotate-90",
+                )}
+              />
+              <Share2 size={15} className="text-muted-foreground" />
+              Share
+            </button>
+
+            {expanded.has("share") && (
+              <div className="ml-4">
+                <button
+                  onClick={() => onNavigate("shared-received")}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
+                    currentId === "shared-received" &&
+                      "bg-sidebar-accent font-medium",
+                  )}
+                >
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  Received
+                </button>
+                <button
+                  onClick={() => onNavigate("shared-sent")}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
+                    currentId === "shared-sent" &&
+                      "bg-sidebar-accent font-medium",
+                  )}
+                >
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  Sent
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mb-3">
@@ -172,10 +279,68 @@ export function ExplorerSidebar({ currentId, onNavigate }: Props) {
       <div className="border-t border-sidebar-border p-3 text-xs text-muted-foreground">
         <div className="mb-1 flex items-center justify-between">
           <span>Storage</span>
-          <span>248 / 512 GB</span>
+          <span>
+            {(() => {
+              if (!storageStats?.data) return "Loading...";
+
+              // Handle stats endpoint response
+              if (storageStats.data.total_size_readable) {
+                return `${storageStats.data.total_size_readable} (${storageStats.data.total_files} files)`;
+              }
+
+              // Handle fallback from files endpoint
+              const files = storageStats.data.files || [];
+              const directories = storageStats.data.directories || [];
+              const totalSize = files.reduce(
+                (sum: number, file: any) =>
+                  sum + (file.file_size || file.size || 0),
+                0,
+              );
+              const totalSizeGB = Math.round(totalSize / 1024 ** 3);
+
+              return `${totalSizeGB} GB (${files.length} files)`;
+            })()}
+          </span>
+        </div>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground">
+            {(() => {
+              if (!storageStats?.data) return "";
+
+              // Handle stats endpoint response
+              if (storageStats.data.total_folders) {
+                return `${storageStats.data.total_folders} folders`;
+              }
+
+              // Handle fallback from files endpoint
+              const directories = storageStats.data.directories || [];
+              return `${directories.length} folders`;
+            })()}
+          </span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-sidebar-accent">
-          <div className="h-full w-[48%] rounded-full bg-primary" />
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{
+              width: (() => {
+                if (!storageStats?.data) return "0%";
+
+                // Handle stats endpoint response
+                if (storageStats.data.total_size_bytes) {
+                  return `${Math.min(100, Math.round((storageStats.data.total_size_bytes / (512 * 1024 * 1024 * 1024)) * 100))}%`;
+                }
+
+                // Handle fallback from files endpoint
+                const files = storageStats.data.files || [];
+                const totalSize = files.reduce(
+                  (sum: number, file: any) =>
+                    sum + (file.file_size || file.size || 0),
+                  0,
+                );
+                return `${Math.min(100, Math.round((totalSize / (512 * 1024 * 1024 * 1024)) * 100))}%`;
+              })(),
+            }}
+          />
         </div>
       </div>
     </aside>

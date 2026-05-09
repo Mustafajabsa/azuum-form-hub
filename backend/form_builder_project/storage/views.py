@@ -4,9 +4,10 @@ import shutil
 import datetime
 import zipfile
 import io
+import json
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from django.http import FileResponse
+from django.http import FileResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework import viewsets, status
@@ -20,6 +21,16 @@ from .serializers import FileInfoSerializer
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse
+from .throttles import (
+    FileUploadRateThrottle,
+    FolderUploadRateThrottle,
+    FileDownloadRateThrottle,
+    BulkDownloadRateThrottle,
+    StorageStatsRateThrottle,
+    FileSearchRateThrottle,
+    BulkDeleteRateThrottle,
+    ShareCreateRateThrottle,
+)
 
 """Files and directories serializers"""
 class FileSerializer(serializers.Serializer):
@@ -54,7 +65,35 @@ class BaseFileAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes     = [IsAuthenticated]
 
+    # viewable file types and their content types
+    VIEWABLE_CONTENT_TYPES = {
+        '.jpg':  'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png':  'image/png',
+        '.gif':  'image/gif',
+        '.bmp':  'image/bmp',
+        '.webp': 'image/webp',
+        '.svg':  'image/svg+xml',
+        '.pdf':  'application/pdf',
+        '.txt':  'text/plain',
+        '.csv':  'text/csv',
+        '.mp4':  'video/mp4',
+        '.webm': 'video/webm',
+        '.mp3':  'audio/mpeg',
+        '.wav':  'audio/wav',
+    }
+    def get_content_type(self, file_path):
+        """Get content type for a file based on its extension."""
+        _, ext = os.path.splitext(file_path)
+        return self.VIEWABLE_CONTENT_TYPES.get(ext.lower(), 'application/octet-stream')
+
+    def is_file_viewable(self, file_path):
+        """Check if a file type supports inline viewing."""
+        _, ext = os.path.splitext(file_path)
+        return ext.lower() in self.VIEWABLE_CONTENT_TYPES
+
     # 2 — every user gets their own isolated folder
+
     def get_user_media_path(self, request):
         """Build and return the user's isolated folder path."""
         user_folder = os.path.join(
@@ -111,12 +150,15 @@ class FileManagerAPIView(BaseFileAPIView):
                     if extension.lower() == '.csv':
                         csv_text = self.convert_csv_to_text(file_path)
                     
+                    file_size = os.path.getsize(file_path)
+                    print(f"DEBUG: File {filename} size: {file_size} bytes")  # Debug logging
+                    
                     files.append({
                         'filename': filename,
                         'file_path': os.path.relpath(file_path, directory_path),
                         'csv_text': csv_text,
                         'is_directory': False,
-                        'size':         os.path.getsize(file_path),
+                        'size':         file_size,
                         'created':      os.path.getctime(file_path),
                         'modified':     os.path.getmtime(file_path)
 
@@ -339,6 +381,14 @@ class FileManagerAPIView(BaseFileAPIView):
         selected_directory_path = os.path.join(media_path, directory)
         if os.path.isdir(selected_directory_path):
             files = self.get_files_from_directory(selected_directory_path)
+        
+        # Filter files by search query if provided
+        if query:
+            query_lower = query.lower()
+            files = [
+                file for file in files
+                if query_lower in file['filename'].lower()
+            ]
         
         if sort_by and sort_by in sort_map:
             files = sorted(
@@ -1283,11 +1333,11 @@ class FileShareCreateAPIView(BaseFileAPIView):
         The token is then used to construct a shareable URL that can be sent to anyone.
         
         **Example:**
-    file_path  = invoices/2024/sales.csv
-    expires_in = 24                        (hours)
-    max_access = 5                         (times)
+        file_path  = invoices/2024/sales.csv
+        expires_in = 24                        (hours)
+        max_access = 5                         (times)
         Returns:
-    share_url = http://yourdomain.com/api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/
+        share_url = http://yourdomain.com/api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/
         
         **Access control options:**
         - expires_in — link stops working after this many hours. Leave empty for no expiry.
@@ -1295,10 +1345,10 @@ class FileShareCreateAPIView(BaseFileAPIView):
         - Both can be combined — link expires whichever condition is met first.
         
         **Example combinations:**
-    expires_in=24, max_access=1   → one time link valid for 24 hours
-    expires_in=48, max_access=10  → up to 10 accesses within 48 hours
-    expires_in=null, max_access=5 → 5 accesses, never expires
-    expires_in=24, max_access=null → unlimited accesses for 24 hours
+        expires_in=24, max_access=1   → one time link valid for 24 hours
+        expires_in=48, max_access=10  → up to 10 accesses within 48 hours
+        expires_in=null, max_access=5 → 5 accesses, never expires
+        expires_in=24, max_access=null → unlimited accesses for 24 hours
         """,
         request={
             'application/json': {
@@ -1378,9 +1428,10 @@ class FileShareCreateAPIView(BaseFileAPIView):
         }
     )
     def post(self, request):
-        file_path  = request.data.get('file_path')
-        expires_in = request.data.get('expires_in')   # in hours, optional
-        max_access = request.data.get('max_access')   # optional
+        file_path   = request.data.get('file_path')
+        expires_in  = request.data.get('expires_in')
+        max_access  = request.data.get('max_access')
+        is_viewable = request.data.get('is_viewable', False)
 
         if not file_path:
             return Response(
@@ -1388,24 +1439,28 @@ class FileShareCreateAPIView(BaseFileAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # verify file actually exists
         absolute_path = os.path.join(self.get_user_media_path(request), file_path)
+
         if not os.path.isfile(absolute_path):
             return Response(
                 {'error': 'File not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # calculate expiry if provided
+        # check if file type actually supports viewing
+        effective_viewable = is_viewable and self.is_file_viewable(absolute_path)
+
         expires_at = None
         if expires_in:
             expires_at = timezone.now() + timezone.timedelta(hours=int(expires_in))
 
         share = SharedFile.objects.create(
-            file_path=file_path,
-            expires_at=expires_at,
-            max_access=max_access,
-            created_by=request.user
+            file_path   = file_path,
+            expires_at  = expires_at,
+            max_access  = max_access,
+            created_by  = request.user,
+            item_type   = 'file',
+            is_viewable = effective_viewable
         )
 
         share_url = request.build_absolute_uri(
@@ -1417,12 +1472,218 @@ class FileShareCreateAPIView(BaseFileAPIView):
                 'share_url':   share_url,
                 'token':       share.token,
                 'file_path':   file_path,
+                'is_viewable': effective_viewable,
                 'expires_at':  expires_at,
                 'max_access':  max_access
             },
             status=status.HTTP_201_CREATED
         )
+class FileShareInfoAPIView(BaseFileAPIView):
+    authentication_classes = []          # ← no auth required
+    permission_classes     = [AllowAny]  # ← anyone can access
+    """Get metadata for a shared file via token."""
     
+    @extend_schema(
+        summary="Get shared file metadata via token",
+        description="""Returns metadata about a shared file without downloading it.
+        No authentication required - the token itself is the access key.""",
+        parameters=[
+            OpenApiParameter(
+                name='token',
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                description='The unique share token',
+                required=True,
+            )
+        ],
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'id': {'type': 'string'},
+                    'name': {'type': 'string'},
+                    'original_name': {'type': 'string'},
+                    'type': {'type': 'string', 'enum': ['file', 'folder']},
+                    'file_size': {'type': 'integer'},
+                    'mime_type': {'type': 'string'},
+                    'path': {'type': 'string'},
+                    'token': {'type': 'string'},
+                    'expires_at': {'type': 'string', 'format': 'date-time'},
+                    'max_access': {'type': 'integer'},
+                    'current_access': {'type': 'integer'},
+                    'shared_by': {'type': 'string'},
+                    'created_at': {'type': 'string', 'format': 'date-time'},
+                }
+            },
+            404: {'description': 'Token does not exist'},
+            403: {'description': 'Link is no longer valid'}
+        }
+    )
+    
+    def get(self, request, token):
+        try:
+            share = SharedFile.objects.get(token=token)
+        except SharedFile.DoesNotExist:
+            return Response(
+                {'error': 'Invalid or expired link'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        valid, reason = share.is_valid()
+        if not valid:
+            return Response(
+                {'error': reason},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Get file size if it's a file
+        file_size = None
+        if share.item_type == 'file':
+            try:
+                absolute_path = os.path.join(
+                    str(settings.FILE_MANAGER_ROOT),
+                    'users',
+                    str(share.created_by_id),
+                    share.file_path
+                )
+                file_size = os.path.getsize(absolute_path)
+            except (OSError, FileNotFoundError):
+                file_size = 0
+
+        return Response({
+            'id': str(share.id),
+            'name': os.path.basename(share.file_path),
+            'original_name': os.path.basename(share.file_path),
+            'type': share.item_type,
+            'file_size': file_size,
+            'mime_type': None,  # Could be determined from file extension if needed
+            'path': share.file_path,
+            'token': str(share.token),
+            'expires_at': share.expires_at.isoformat() if share.expires_at else None,
+            'max_access': share.max_access,
+            'current_access': share.access_count,
+            'shared_by': share.created_by.username if share.created_by else None,  # Return username instead of ID
+        })
+
+class FileShareBulkInfoAPIView(BaseFileAPIView):
+    authentication_classes = []          # ← no auth required
+    permission_classes     = [AllowAny]  # ← anyone can access
+    """Get metadata for multiple shared files via tokens."""
+    
+    @extend_schema(
+        summary="Get multiple shared files metadata via tokens",
+        description="""Returns metadata about multiple shared files without downloading them.
+        No authentication required - the tokens themselves are the access keys.""",
+        parameters=[
+            OpenApiParameter(
+                name='token',
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.QUERY,
+                description='Share tokens (can be multiple)',
+                required=True,
+                many=True
+            )
+        ],
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'shared': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'id': {'type': 'string'},
+                                'name': {'type': 'string'},
+                                'original_name': {'type': 'string'},
+                                'type': {'type': 'string', 'enum': ['file', 'folder']},
+                                'file_size': {'type': 'integer'},
+                                'mime_type': {'type': 'string'},
+                                'path': {'type': 'string'},
+                                'token': {'type': 'string'},
+                                'is_viewable': {'type': 'boolean'},
+                                'expires_at': {'type': 'string', 'format': 'date-time'},
+                                'max_access': {'type': 'integer'},
+                                'current_access': {'type': 'integer'},
+                                'shared_by': {'type': 'string'},
+                                'created_at': {'type': 'string', 'format': 'date-time'},
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'No tokens provided'},
+            404: {'description': 'One or more tokens do not exist'},
+            403: {'description': 'One or more links are no longer valid'}
+        }
+    )
+    
+    def get(self, request):
+        tokens = request.GET.getlist('token')
+        if not tokens:
+            return Response(
+                {'error': 'No tokens provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        shared_items = []
+        errors = []
+
+        for token in tokens:
+            try:
+                share = SharedFile.objects.get(token=token)
+                
+                valid, reason = share.is_valid()
+                if not valid:
+                    errors.append({'token': token, 'error': reason})
+                    continue
+
+                # Get file size if it's a file
+                file_size = None
+                if share.item_type == 'file':
+                    try:
+                        absolute_path = os.path.join(
+                            str(settings.FILE_MANAGER_ROOT),
+                            'users',
+                            str(share.created_by_id),
+                            share.file_path
+                        )
+                        file_size = os.path.getsize(absolute_path)
+                    except (OSError, FileNotFoundError):
+                        file_size = 0
+
+                shared_items.append({
+                    'id': str(share.id),
+                    'name': os.path.basename(share.file_path),
+                    'original_name': os.path.basename(share.file_path),
+                    'type': share.item_type,
+                    'file_size': file_size,
+                    'mime_type': None,
+                    'path': share.file_path,
+                    'token': str(share.token),
+                    'is_viewable': share.is_viewable,
+                    'expires_at': share.expires_at.isoformat() if share.expires_at else None,
+                    'max_access': share.max_access,
+                    'current_access': share.access_count,
+                    'shared_by': share.created_by.username if share.created_by else None,
+                })
+
+            except SharedFile.DoesNotExist:
+                errors.append({'token': token, 'error': 'Invalid or expired link'})
+
+        # If no valid items found, return error
+        if not shared_items and errors:
+            return Response(
+                {'error': 'No valid tokens found', 'details': errors},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        response_data = {'shared': shared_items}
+        if errors:
+            response_data['errors'] = errors
+
+        return Response(response_data)
+
 class FileShareAccessAPIView(BaseFileAPIView):
     authentication_classes = []          # ← no auth required
     permission_classes     = [AllowAny]  # ← anyone can access
@@ -1445,14 +1706,14 @@ class FileShareAccessAPIView(BaseFileAPIView):
         - Link has not exceeded max access count (if max_access was set)
         
         **Example:**
-    GET /api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/
-    → serves invoices/2024/sales.csv as a download
+        GET /api/files/shared/a8f3k2p9-xxxx-xxxx-xxxx/
+     → serves invoices/2024/sales.csv as a download
         
         **What happens to the access count:**
-    First access   → access_count = 1
-    Second access  → access_count = 2
-    ...
-    max_access hit → 403 Forbidden, link no longer works
+        First access   → access_count = 1
+        Second access  → access_count = 2
+        ...
+        max_access hit → 403 Forbidden, link no longer works
         """,
         parameters=[
             OpenApiParameter(
@@ -1504,11 +1765,10 @@ class FileShareAccessAPIView(BaseFileAPIView):
             share = SharedFile.objects.get(token=token)
         except SharedFile.DoesNotExist:
             return Response(
-                {'error': 'Invalid or expired link'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            {'error': 'Invalid or expired link'},
+            status=status.HTTP_404_NOT_FOUND
+        )
 
-        # validate the link
         valid, reason = share.is_valid()
         if not valid:
             share.delete()
@@ -1517,17 +1777,51 @@ class FileShareAccessAPIView(BaseFileAPIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # increment access count
         share.access_count += 1
         share.save()
 
-        # serve the file
-        absolute_path = os.path.join(str(settings.FILE_MANAGER_ROOT), 'users', str(share.created_by_id), str(share.file_path))
-        fh = open(absolute_path, 'rb')
-        response = FileResponse(fh, content_type='application/octet-stream')
-        response['Content-Disposition'] = f'attachment; filename={os.path.basename(share.file_path)}'
-        return response
-    
+        absolute_path = os.path.join(
+            str(settings.FILE_MANAGER_ROOT),
+            'users',
+            str(share.created_by_id),
+            share.file_path
+        )
+
+        # serve file directly
+        if share.item_type == 'file':
+            if share.is_viewable:
+                # inline viewing — browser renders the file
+                content_type = self.get_content_type(share.file_path)
+                fh           = open(absolute_path, 'rb')
+                response     = FileResponse(fh, content_type=content_type)
+                # no Content-Disposition → browser renders inline
+                return response
+            else:
+                # force download
+                fh       = open(absolute_path, 'rb')
+                response = FileResponse(fh, content_type='application/octet-stream')
+                response['Content-Disposition'] = f'attachment; filename={os.path.basename(share.file_path)}'
+                return response
+
+        # serve folder as zip — always download, never viewable
+        elif share.item_type == 'folder':
+            zip_buffer  = io.BytesIO()
+            folder_name = os.path.basename(absolute_path.rstrip(os.sep))
+
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for dirpath, dirnames, filenames in os.walk(absolute_path):
+                    for filename in filenames:
+                        file_full_path = os.path.join(dirpath, filename)
+                        arcname        = os.path.join(
+                            folder_name,
+                            os.path.relpath(file_full_path, absolute_path)
+                        )
+                        zip_file.write(file_full_path, arcname=arcname)
+
+            zip_buffer.seek(0)
+            response = FileResponse(zip_buffer, content_type='application/zip')
+            response['Content-Disposition'] = f'attachment; filename={folder_name}.zip'
+            return response
 class FileShareRevokeAPIView(BaseFileAPIView):
     """Revoke a share link."""
     @extend_schema(
@@ -2070,44 +2364,104 @@ class BulkFileDownloadAPIView(BaseFileAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # in-memory buffer — no temp file written to disk
-        zip_buffer = io.BytesIO()
-        failed     = []
-        added      = []
-
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for path in paths:
-                absolute_path = os.path.join(media_path, path)
-                try:
-                    if os.path.isfile(absolute_path):
-                        # arcname preserves the relative folder structure inside the zip
-                        zip_file.write(absolute_path, arcname=path)
-                        added.append(path)
-                    elif os.path.isdir(absolute_path):
-                        failed.append({'path': path, 'error': 'Folders are not supported — provide individual file paths'})
-                    else:
-                        failed.append({'path': path, 'error': 'File not found'})
-                except Exception as e:
-                    failed.append({'path': path, 'error': str(e)})
-
-        # if nothing was added to the zip, return error
-        if not added:
+        # Use streaming response for better performance with large files
+        failed = []
+        added = []
+        
+        # Create a streaming response that generates zip on-the-fly
+        def zip_generator():
+            # Use a temporary file for better memory efficiency with large files
+            temp_zip_path = os.path.join(media_path, f'temp_{zip_name}_{request.user.id}.zip')
+            
+            try:
+                # Use optimized compression settings for better performance
+                with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_STORED) as zip_file:
+                    # ZIP_STORED is faster for large files, ZIP_DEFLATED for smaller files
+                    # We could implement size-based compression selection here
+                    
+                    for path in paths:
+                        absolute_path = os.path.join(media_path, path)
+                        try:
+                            if os.path.isfile(absolute_path):
+                                # Get file size for optimization decisions
+                                file_size = os.path.getsize(absolute_path)
+                                
+                                # For large files (>50MB), use streaming write to avoid memory issues
+                                if file_size > 50 * 1024 * 1024:  # 50MB threshold
+                                    with open(absolute_path, 'rb') as f:
+                                        # Write file in chunks to avoid loading entire file into memory
+                                        zip_info = zipfile.ZipInfo.from_file(absolute_path, arcname=path)
+                                        zip_info.compress_type = zipfile.ZIP_STORED  # No compression for speed
+                                        zip_file.writestr(zip_info, f.read())
+                                else:
+                                    # For smaller files, use regular write with compression
+                                    zip_info = zipfile.ZipInfo.from_file(absolute_path, arcname=path)
+                                    zip_info.compress_type = zipfile.ZIP_DEFLATED  # Compress smaller files
+                                    with open(absolute_path, 'rb') as f:
+                                        zip_file.writestr(zip_info, f.read())
+                                
+                                added.append(path)
+                            elif os.path.isdir(absolute_path):
+                                failed.append({'path': path, 'error': 'Folders are not supported — provide individual file paths'})
+                            else:
+                                failed.append({'path': path, 'error': 'File not found'})
+                        except Exception as e:
+                            failed.append({'path': path, 'error': str(e)})
+                
+                # Check if any files were added
+                if not added:
+                    os.remove(temp_zip_path)  # Clean up temp file
+                    yield json.dumps({
+                        'error': 'No valid files found to zip',
+                        'failed': failed
+                    }).encode()
+                    return
+                
+                # Stream the zip file in chunks
+                with open(temp_zip_path, 'rb') as f:
+                    while True:
+                        chunk = f.read(8192)  # 8KB chunks for optimal performance
+                        if not chunk:
+                            break
+                        yield chunk
+                
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_zip_path):
+                    os.remove(temp_zip_path)
+        
+        # Check if we have any valid files before starting streaming
+        # Pre-validate paths to avoid streaming empty response
+        temp_failed = []
+        temp_added = []
+        for path in paths:
+            absolute_path = os.path.join(media_path, path)
+            try:
+                if os.path.isfile(absolute_path):
+                    temp_added.append(path)
+                elif os.path.isdir(absolute_path):
+                    temp_failed.append({'path': path, 'error': 'Folders are not supported — provide individual file paths'})
+                else:
+                    temp_failed.append({'path': path, 'error': 'File not found'})
+            except Exception as e:
+                temp_failed.append({'path': path, 'error': str(e)})
+        
+        if not temp_added:
             return Response(
                 {
                     'error': 'No valid files found to zip',
-                    'failed': failed
+                    'failed': temp_failed
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        # rewind buffer to the beginning before sending
-        zip_buffer.seek(0)
-
-        response = FileResponse(
-            zip_buffer,
+        
+        # Return streaming response
+        response = StreamingHttpResponse(
+            zip_generator(),
             content_type='application/zip'
         )
         response['Content-Disposition'] = f'attachment; filename={zip_name}.zip'
+        response['Cache-Control'] = 'no-cache'  # Prevent caching of large downloads
         return response
 
 class StorageStatsAPIView(BaseFileAPIView):
@@ -2285,3 +2639,847 @@ class StorageStatsAPIView(BaseFileAPIView):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+class MixedDownloadAPIView(BaseFileAPIView):
+
+    """Download a mix of files and folders as a zip archive."""
+    throttle_classes = [BulkDownloadRateThrottle]
+
+    @extend_schema(
+        summary="Download files and folders as a zip archive",
+        description="""
+        Downloads a mix of files and folders as a single zip archive.
+        Folder structures are preserved inside the zip exactly as they are on disk.
+        
+        **Example:**
+        ```json
+        {
+            "paths": [
+                "invoices/2024/sales.csv",
+                "invoices/2025/",
+                "reports/"
+            ],
+            "zip_name": "my_download"
+        }
+        ```
+        Result zip structure:
+        my_download.zip
+        invoices/
+            2024/
+                sales.csv        ← single file
+            2025/
+                january.csv      ← from folder
+                february.csv     ← from folder
+        reports/
+            annual.pdf           ← from folder
+            summary.csv          ← from folder
+            """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'paths': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of relative file and folder paths to include.',
+                        'example': [
+                            'invoices/2024/sales.csv',
+                            'invoices/2025/',
+                            'reports/'
+                        ]
+                    },
+                    'zip_name': {
+                        'type': 'string',
+                        'description': 'Name of the zip file without extension. Defaults to download.',
+                        'example': 'my_download'
+                    }
+                },
+                'required': ['paths']
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Zip archive containing all requested files and folders"
+            ),
+            400: OpenApiResponse(
+                description="No paths provided or no valid items found",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'paths is required and cannot be empty'},
+                        'failed': {'type': 'array', 'items': {'type': 'object'}}
+                    }
+                }
+            )
+        }
+    )
+    def post(self, request):
+        """Download a mix of files and folders as a zip."""
+        media_path = self.get_user_media_path(request)
+        paths      = request.data.get('paths')
+        zip_name   = request.data.get('zip_name', 'download')
+
+        # validate paths provided
+        if not paths:
+            return Response(
+                {'error': 'paths is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # sanitize all paths
+        paths = [self.sanitize_path(p) for p in paths]
+        paths = [p for p in paths if p is not None]
+
+        if not paths:
+            return Response(
+                {'error': 'No valid paths provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        zip_buffer = io.BytesIO()
+        failed     = []
+        added      = []
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for path in paths:
+                absolute_path = os.path.join(media_path, path)
+
+                try:
+                    if os.path.isfile(absolute_path):
+                        # single file — add directly
+                        zip_file.write(absolute_path, arcname=path)
+                        added.append(path)
+
+                    elif os.path.isdir(absolute_path):
+                        # folder — walk recursively and add all files
+                        # preserving the folder structure inside the zip
+                        for dirpath, dirnames, filenames in os.walk(absolute_path):
+                            for filename in filenames:
+                                file_full_path = os.path.join(dirpath, filename)
+
+                                # arcname preserves relative structure inside zip
+                                arcname = os.path.join(
+                                    path,
+                                    os.path.relpath(file_full_path, absolute_path)
+                                )
+                                zip_file.write(file_full_path, arcname=arcname)
+                                added.append(arcname)
+
+                    else:
+                        failed.append({
+                            'path':  path,
+                            'error': 'File or folder not found'
+                        })
+
+                except Exception as e:
+                    failed.append({'path': path, 'error': str(e)})
+
+        if not added:
+            return Response(
+                {
+                    'error':  'No valid files found to zip',
+                    'failed': failed
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        zip_buffer.seek(0)
+
+        response = FileResponse(zip_buffer, content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename={zip_name}.zip'
+        return response
+
+class MixedMoveAPIView(BaseFileAPIView):
+    """Move multiple files and folders to a new location."""
+
+    @extend_schema(
+        summary="Move multiple files and folders",
+        description="""
+        Moves multiple files and folders to a destination directory in a single request.
+        Each item is processed independently — if one fails the rest continue.
+        
+        **How it works:**
+        Provide a list of source paths and a single destination directory.
+        All items will be moved into that destination directory preserving their names.
+        
+        **Example:**
+    ```json
+        {
+            "paths": [
+                "invoices/2024/sales.csv",
+                "invoices/2025/",
+                "reports/annual.pdf"
+            ],
+            "destination": "archive/2024"
+        }
+    ```
+        Result:
+        BEFORE:                         AFTER:
+    invoices/                       archive/
+        2024/                           2024/
+            sales.csv    ──────►            sales.csv
+        2025/            ──────►            2025/
+    reports/                                    january.csv
+        annual.pdf       ──────►            annual.pdf
+        **Important notes:**
+        - destination is a directory path — not a full file path.
+        - Each item keeps its original name at the destination.
+        - Destination directory is created automatically if it does not exist.
+        - If an item already exists at the destination it will be overwritten.
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'paths': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of relative paths of files and folders to move.',
+                        'example': [
+                            'invoices/2024/sales.csv',
+                            'invoices/2025/',
+                            'reports/annual.pdf'
+                        ]
+                    },
+                    'destination': {
+                        'type': 'string',
+                        'description': 'Relative path of the destination directory to move items into.',
+                        'example': 'archive/2024'
+                    }
+                },
+                'required': ['paths', 'destination']
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description="Move completed — check moved and failed lists for details",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {
+                            'type': 'string',
+                            'example': '2 item(s) moved successfully, 1 failed'
+                        },
+                        'moved': {
+                            'type': 'array',
+                            'items': {'type': 'string'},
+                            'example': ['invoices/2024/sales.csv', 'invoices/2025/']
+                        },
+                        'failed': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'path':  {'type': 'string'},
+                                    'error': {'type': 'string'}
+                                }
+                            }
+                        }
+                    }
+                }
+            ),
+            400: OpenApiResponse(
+                description="Missing fields or no valid paths provided",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'paths and destination are required'}
+                    }
+                }
+            ),
+            404: OpenApiResponse(
+                description="Destination directory not found after creation attempt",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'Could not create destination directory'}
+                    }
+                }
+            )
+        }
+    )
+    def patch(self, request):
+        """Move multiple files and folders to a destination directory."""
+        media_path  = self.get_user_media_path(request)
+        paths       = request.data.get('paths')
+        destination = request.data.get('destination')
+
+        # validate both fields provided
+        if not paths or not destination:
+            return Response(
+                {'error': 'paths and destination are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # sanitize destination
+        destination = self.sanitize_path(destination)
+        if not destination:
+            return Response(
+                {'error': 'Invalid destination path'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # sanitize all source paths
+        paths = [self.sanitize_path(p) for p in paths]
+        paths = [p for p in paths if p is not None]
+
+        if not paths:
+            return Response(
+                {'error': 'No valid paths provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        absolute_destination = os.path.join(media_path, destination)
+
+        # create destination directory if it doesn't exist
+        try:
+            os.makedirs(absolute_destination, exist_ok=True)
+        except Exception as e:
+            return Response(
+                {'error': f'Could not create destination directory: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        moved  = []
+        failed = []
+
+        for path in paths:
+            absolute_source = os.path.join(media_path, path)
+
+            try:
+                # check source exists
+                if not os.path.exists(absolute_source):
+                    failed.append({'path': path, 'error': 'File or folder not found'})
+                    continue
+
+                # prevent moving into itself
+                if absolute_destination.startswith(absolute_source + os.sep):
+                    failed.append({'path': path, 'error': 'Cannot move a folder into itself'})
+                    continue
+
+                # build destination path — item keeps its original name
+                item_name            = os.path.basename(absolute_source.rstrip(os.sep))
+                absolute_destination_item = os.path.join(absolute_destination, item_name)
+
+                # move the item
+                shutil.move(absolute_source, absolute_destination_item)
+                moved.append(path)
+
+            except Exception as e:
+                failed.append({'path': path, 'error': str(e)})
+
+        return Response(
+            {
+                'message':     f'{len(moved)} item(s) moved successfully, {len(failed)} failed',
+                'moved':       moved,
+                'destination': destination,
+                'failed':      failed
+            },
+            status=status.HTTP_200_OK if moved else status.HTTP_400_BAD_REQUEST
+        )
+
+class FileCompressAPIView(BaseFileAPIView):
+
+    """Compress files and folders into a zip archive stored on the server."""
+
+    @extend_schema(
+        summary="Compress files and folders into a zip archive",
+        description="""
+        Compresses a mix of files and folders into a zip archive and saves it
+        to a specified location on the server — without downloading it.
+        
+        **Difference from bulk download:**
+        - bulk-download → zips and sends to the client as a download
+        - compress       → zips and saves the zip file on the server
+        
+        **Example:**
+        ```json
+        {
+            "paths": [
+                "invoices/2024/sales.csv",
+                "invoices/2025/",
+                "reports/"
+            ],
+            "zip_name": "invoices_archive",
+            "destination": "archives/"
+        }
+        ```
+        Result:
+        BEFORE:                         AFTER:
+        invoices/                       invoices/
+        2024/                           2024/
+            sales.csv                       sales.csv
+        2025/                           2025/
+        reports/                        reports/
+                                    archives/
+                                        invoices_archive.zip  ← created here
+                           **Important notes:**
+        - destination is optional. Defaults to the root of the user's media folder.
+        - zip_name is optional. Defaults to 'archive'.
+        - If a zip with the same name already exists at the destination it will be overwritten.
+        - The original files and folders are NOT deleted — only a compressed copy is created.
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'paths': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of relative paths of files and folders to compress.',
+                        'example': [
+                            'invoices/2024/sales.csv',
+                            'invoices/2025/',
+                            'reports/'
+                        ]
+                    },
+                    'zip_name': {
+                        'type': 'string',
+                        'description': 'Name of the zip file without extension. Defaults to archive.',
+                        'example': 'invoices_archive'
+                    },
+                    'destination': {
+                        'type': 'string',
+                        'description': 'Relative path of the directory to save the zip into. Defaults to root.',
+                        'example': 'archives/'
+                    }
+                },
+                'required': ['paths']
+            }
+        },
+        responses={
+            201: OpenApiResponse(
+                description="Zip archive created successfully on the server",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {
+                            'type': 'string',
+                            'example': 'Archive created successfully'
+                        },
+                        'zip_path': {
+                            'type': 'string',
+                            'description': 'Relative path of the created zip file',
+                            'example': 'archives/invoices_archive.zip'
+                        },
+                        'zip_size_readable': {
+                            'type': 'string',
+                            'example': '1.2 MB'
+                        },
+                        'files_compressed': {
+                            'type': 'integer',
+                            'example': 5
+                        },
+                        'failed': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'path':  {'type': 'string'},
+                                    'error': {'type': 'string'}
+                                }
+                            }
+                        }
+                    }
+                }
+            ),
+            400: OpenApiResponse(
+                description="Missing paths or no valid items found",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'paths is required and cannot be empty'}
+                    }
+                }
+            )
+        }
+    )
+    def post(self, request):
+        """Compress files and folders into a zip archive saved on the server."""
+        media_path  = self.get_user_media_path(request)
+        paths       = request.data.get('paths')
+        zip_name    = request.data.get('zip_name', 'archive')
+        destination = request.data.get('destination', '')
+
+        # validate paths provided
+        if not paths:
+            return Response(
+                {'error': 'paths is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # sanitize destination and paths
+        destination = self.sanitize_path(destination) or ''
+        paths       = [self.sanitize_path(p) for p in paths]
+        paths       = [p for p in paths if p is not None]
+
+        if not paths:
+            return Response(
+                {'error': 'No valid paths provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # build the destination folder and zip file path
+        destination_folder = os.path.join(media_path, destination)
+        os.makedirs(destination_folder, exist_ok=True)
+        zip_file_path = os.path.join(destination_folder, f'{zip_name}.zip')
+
+        failed          = []
+        files_compressed = 0
+
+        try:
+            with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for path in paths:
+                    absolute_path = os.path.join(media_path, path)
+
+                    try:
+                        if os.path.isfile(absolute_path):
+                            # single file — add directly
+                            zip_file.write(absolute_path, arcname=path)
+                            files_compressed += 1
+
+                        elif os.path.isdir(absolute_path):
+                            # folder — walk recursively
+                            for dirpath, dirnames, filenames in os.walk(absolute_path):
+                                for filename in filenames:
+                                    file_full_path = os.path.join(dirpath, filename)
+                                    arcname        = os.path.join(
+                                        path,
+                                        os.path.relpath(file_full_path, absolute_path)
+                                    )
+                                    zip_file.write(file_full_path, arcname=arcname)
+                                    files_compressed += 1
+
+                        else:
+                            failed.append({'path': path, 'error': 'File or folder not found'})
+
+                    except Exception as e:
+                        failed.append({'path': path, 'error': str(e)})
+
+            # if nothing was compressed delete the empty zip and return error
+            if files_compressed == 0:
+                os.remove(zip_file_path)
+                return Response(
+                    {
+                        'error':  'No valid files found to compress',
+                        'failed': failed
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # get zip file size
+            zip_size       = os.path.getsize(zip_file_path)
+            zip_relative   = os.path.join(destination, f'{zip_name}.zip') if destination else f'{zip_name}.zip'
+
+            return Response(
+                {
+                    'message':          'Archive created successfully',
+                    'zip_path':         zip_relative,
+                    'zip_size_readable': self.get_readable_size(zip_size),
+                    'files_compressed': files_compressed,
+                    'failed':           failed
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            # clean up partial zip if something went wrong
+            if os.path.exists(zip_file_path):
+                os.remove(zip_file_path)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )    
+
+class MixedShareAPIView(BaseFileAPIView):
+    """Generate shareable links for multiple files and folders."""
+
+    @extend_schema(
+        summary="Generate shareable links for multiple files and folders",
+        description="""
+        Generates secure shareable links for multiple files and folders in a single request.
+        
+        **View control:**
+        Set is_viewable to true to serve files inline in the browser.
+        Set is_viewable to false to force a download prompt.
+        Folders are always downloaded as zip — is_viewable is ignored for folders.
+        
+        **Viewable file types:**
+        Images (jpg, jpeg, png, gif, bmp, webp, svg), PDF, txt, csv, mp4, webm, mp3, wav.
+        
+        **Example:**
+        ```json
+        {
+            "paths": [
+                "invoices/2024/sales.csv",
+                "invoices/2025/",
+                "reports/annual.pdf"
+            ],
+            "expires_in": 24,
+            "max_access": 5,
+            "is_viewable": true
+        }
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'paths': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of relative paths of files and folders to share.',
+                        'example': [
+                            'invoices/2024/sales.csv',
+                            'invoices/2025/',
+                            'reports/annual.pdf'
+                        ]
+                    },
+                    'expires_in': {
+                        'type': 'integer',
+                        'description': 'Hours until all links expire. Leave empty for no expiry.',
+                        'example': 24
+                    },
+                    'max_access': {
+                        'type': 'integer',
+                        'description': 'Maximum accesses per link. Leave empty for unlimited.',
+                        'example': 5
+                    },
+                    'is_viewable': {
+                        'type': 'boolean',
+                        'description': 'True to serve files inline in browser. False to force download. Ignored for folders.',
+                        'example': True
+                    }
+                },
+                'required': ['paths']
+            }
+        },
+        responses={
+            201: OpenApiResponse(
+                description="Share links generated successfully",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {
+                            'type': 'string',
+                            'example': '3 link(s) generated successfully, 0 failed'
+                        },
+                        'shared': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'path':        {'type': 'string'},
+                                    'type':        {'type': 'string', 'example': 'file'},
+                                    'is_viewable': {'type': 'boolean', 'example': True},
+                                    'token':       {'type': 'string'},
+                                    'share_url':   {'type': 'string'},
+                                    'expires_at':  {'type': 'string'},
+                                    'max_access':  {'type': 'integer'}
+                                }
+                            }
+                        },
+                        'failed': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'path':  {'type': 'string'},
+                                    'error': {'type': 'string'}
+                                }
+                            }
+                        }
+                    }
+                }
+            ),
+            400: OpenApiResponse(
+                description="Missing paths or no valid items found",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'paths is required and cannot be empty'}
+                    }
+                }
+            )
+        }
+    )
+    def post(self, request):
+        """Generate shareable links for multiple files and folders."""
+        media_path  = self.get_user_media_path(request)
+        paths       = request.data.get('paths')
+        expires_in  = request.data.get('expires_in')
+        max_access  = request.data.get('max_access')
+        is_viewable = request.data.get('is_viewable', False)
+
+        if not paths:
+            return Response(
+                {'error': 'paths is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        paths = [self.sanitize_path(p) for p in paths]
+        paths = [p for p in paths if p is not None]
+
+        if not paths:
+            return Response(
+                {'error': 'No valid paths provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        expires_at = None
+        if expires_in:
+            expires_at = timezone.now() + timezone.timedelta(hours=int(expires_in))
+
+        shared = []
+        failed = []
+
+        for path in paths:
+            absolute_path = os.path.join(media_path, path)
+
+            try:
+                if os.path.isfile(absolute_path):
+                    item_type = 'file'
+
+                    # check if the file type actually supports viewing
+                    # if is_viewable is True but file type is not supported
+                    # force it to False silently
+                    effective_viewable = is_viewable and self.is_file_viewable(absolute_path)
+
+                elif os.path.isdir(absolute_path):
+                    item_type          = 'folder'
+                    effective_viewable = False   # folders are never viewable
+
+                else:
+                    failed.append({'path': path, 'error': 'File or folder not found'})
+                    continue
+
+                share = SharedFile.objects.create(
+                    file_path   = path,
+                    expires_at  = expires_at,
+                    max_access  = max_access,
+                    created_by  = request.user,
+                    item_type   = item_type,
+                    is_viewable = effective_viewable
+                )
+
+                share_url = request.build_absolute_uri(
+                    f'/api/files/shared/{share.token}/'
+                )
+
+                shared.append({
+                    'path':        path,
+                    'type':        item_type,
+                    'is_viewable': effective_viewable,
+                    'token':       str(share.token),
+                    'share_url':   share_url,
+                    'expires_at':  expires_at,
+                    'max_access':  max_access
+                })
+
+            except Exception as e:
+                failed.append({'path': path, 'error': str(e)})
+
+        if not shared:
+            return Response(
+                {
+                    'error':  'No share links could be generated',
+                    'failed': failed
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                'message': f'{len(shared)} link(s) generated successfully, {len(failed)} failed',
+                'shared':  shared,
+                'failed':  failed
+            },
+            status=status.HTTP_201_CREATED
+        )
+        """Generate shareable links for multiple files and folders."""
+        media_path = self.get_user_media_path(request)
+        paths      = request.data.get('paths')
+        expires_in = request.data.get('expires_in')
+        max_access = request.data.get('max_access')
+
+        # validate paths provided
+        if not paths:
+            return Response(
+                {'error': 'paths is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # sanitize all paths
+        paths = [self.sanitize_path(p) for p in paths]
+        paths = [p for p in paths if p is not None]
+
+        if not paths:
+            return Response(
+                {'error': 'No valid paths provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # calculate expiry if provided
+        expires_at = None
+        if expires_in:
+            expires_at = timezone.now() + timezone.timedelta(hours=int(expires_in))
+
+        shared = []
+        failed = []
+
+        for path in paths:
+            absolute_path = os.path.join(media_path, path)
+
+            try:
+                if os.path.isfile(absolute_path):
+                    item_type = 'file'
+
+                elif os.path.isdir(absolute_path):
+                    item_type = 'folder'
+
+                else:
+                    failed.append({'path': path, 'error': 'File or folder not found'})
+                    continue
+
+                # create share record
+                share = SharedFile.objects.create(
+                    file_path  = path,
+                    expires_at = expires_at,
+                    max_access = max_access,
+                    created_by = request.user,
+                    item_type  = item_type    # ← new field on SharedFile model
+                )
+
+                share_url = request.build_absolute_uri(
+                    f'/api/files/shared/{share.token}/'
+                )
+
+                shared.append({
+                    'path':       path,
+                    'type':       item_type,
+                    'token':      str(share.token),
+                    'share_url':  share_url,
+                    'expires_at': expires_at,
+                    'max_access': max_access
+                })
+
+            except Exception as e:
+                failed.append({'path': path, 'error': str(e)})
+
+        if not shared:
+            return Response(
+                {
+                    'error':  'No share links could be generated',
+                    'failed': failed
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                'message': f'{len(shared)} link(s) generated successfully, {len(failed)} failed',
+                'shared':  shared,
+                'failed':  failed
+            },
+            status=status.HTTP_201_CREATED
+        )

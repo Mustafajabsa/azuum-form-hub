@@ -6,6 +6,7 @@ import {
   FileVideo,
   FileAudio,
   FileArchive,
+  Monitor,
   File,
   type LucideIcon,
 } from "lucide-react";
@@ -21,6 +22,7 @@ type FileKind =
   | "video"
   | "audio"
   | "archive"
+  | "presentation"
   | "other";
 
 const map: Record<FileKind, { Icon: LucideIcon; colorVar: string }> = {
@@ -33,6 +35,7 @@ const map: Record<FileKind, { Icon: LucideIcon; colorVar: string }> = {
   video: { Icon: FileVideo, colorVar: "var(--file-video)" },
   audio: { Icon: FileAudio, colorVar: "var(--file-audio)" },
   archive: { Icon: FileArchive, colorVar: "var(--file-archive)" },
+  presentation: { Icon: Monitor, colorVar: "var(--file-presentation)" },
   other: { Icon: File, colorVar: "var(--muted-foreground)" },
 };
 

@@ -16,7 +16,19 @@ class FileInfo(models.Model):
 
 
 # Sharable files token database model
+# storage/models.py
 class SharedFile(models.Model):
+
+    class ItemType(models.TextChoices):
+        FILE   = 'file',   'File'
+        FOLDER = 'folder', 'Folder'
+
+    item_type    = models.CharField(
+        max_length=10,
+        choices=ItemType.choices,
+        default=ItemType.FILE
+    )
+    is_viewable  = models.BooleanField(default=False)
     created_by   = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -24,14 +36,12 @@ class SharedFile(models.Model):
     )
     token        = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     file_path    = models.CharField(max_length=500)
-    created_at   = models.DateTimeField(auto_now_add=True)
-    expires_at   = models.DateTimeField(null=True, blank=True)  # None = never expires
-    max_access   = models.IntegerField(null=True, blank=True)   # None = unlimited
+    expires_at   = models.DateTimeField(null=True, blank=True)
+    max_access   = models.IntegerField(null=True, blank=True)
     access_count = models.IntegerField(default=0)
     is_active    = models.BooleanField(default=True)
 
     def is_valid(self):
-        """Check if the link is still valid."""
         if not self.is_active:
             return False, 'Link has been revoked'
         if self.expires_at and timezone.now() > self.expires_at:

@@ -7,8 +7,8 @@ import {
   List,
   FolderPlus,
   Upload,
+  Check,
 } from "lucide-react";
-import { getPath, type FileNode } from "@/lib/file-data";
 import { cn } from "@/lib/utils";
 import { MoreMenu } from "@/components/more-menu";
 
@@ -18,14 +18,32 @@ interface Props {
   history: { back: string[]; forward: string[] };
   onBack: () => void;
   onForward: () => void;
+  onUp: () => void;
   view: "grid" | "list";
   onViewChange: (v: "grid" | "list") => void;
   query: string;
   onQueryChange: (q: string) => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  sortBy: string;
+  onSortChange: (sort: string) => void;
+  sortOrder: string;
+  onSortOrderChange: (order: string) => void;
   selectedIds: Set<string>;
   onNewFolder: () => void;
   onUpload: () => void;
   onMoveToTrash: () => void;
+  onDelete: () => void;
+  onDownload: () => void;
+  onRename: () => void;
+  onCopy: () => void;
+  onCut: () => void;
+  onPaste: () => void;
+  canPaste: boolean;
+  onCompress: () => void;
+  onSelectAll: () => void;
+  onShare: () => void;
+  items: any[];
 }
 
 export function ExplorerToolbar({
@@ -34,17 +52,44 @@ export function ExplorerToolbar({
   history,
   onBack,
   onForward,
+  onUp,
   view,
   onViewChange,
   query,
   onQueryChange,
+  searchQuery,
+  onSearchChange,
+  sortBy,
+  onSortChange,
+  sortOrder,
+  onSortOrderChange,
   selectedIds,
   onNewFolder,
   onUpload,
   onMoveToTrash,
+  onDelete,
+  onDownload,
+  onRename,
+  onCopy,
+  onCut,
+  onPaste,
+  canPaste,
+  onCompress,
+  onSelectAll,
+  onShare,
+  items,
 }: Props) {
-  const path = getPath(currentId);
-  const parent = path[path.length - 2] as FileNode | undefined;
+  // Determine if up button should be enabled (not at root)
+  const canGoUp = currentId !== "root" && currentId !== "";
+
+  // Determine if all items are selected
+  const areAllItemsSelected =
+    items && selectedIds.size > 0 && selectedIds.size === items.length;
+
+  // Handle select all functionality
+  const handleSelectAll = () => {
+    onSelectAll();
+  };
 
   return (
     <div className="flex flex-col border-b border-border bg-toolbar">
@@ -64,37 +109,39 @@ export function ExplorerToolbar({
           >
             <ChevronRight size={16} />
           </ToolbarBtn>
-          <ToolbarBtn
-            onClick={() => parent && onNavigate(parent.id)}
-            disabled={!parent}
-            aria-label="Up"
-          >
+          <ToolbarBtn onClick={onUp} disabled={!canGoUp} aria-label="Up">
             <ChevronUp size={16} />
           </ToolbarBtn>
         </div>
 
         <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm">
-          {path.map((node, i) => (
-            <div key={node.id} className="flex min-w-0 items-center gap-1">
-              {i > 0 && (
-                <ChevronRight
-                  size={14}
-                  className="shrink-0 text-muted-foreground"
-                />
-              )}
+          {currentId === "root" ? (
+            <button
+              onClick={() => onNavigate("root")}
+              className="truncate rounded px-2 py-1 transition-colors font-semibold text-foreground"
+            >
+              Home
+            </button>
+          ) : (
+            <>
               <button
-                onClick={() => onNavigate(node.id)}
-                className={cn(
-                  "truncate rounded px-2 py-1 transition-colors hover:bg-accent",
-                  i === path.length - 1
-                    ? "font-semibold text-foreground"
-                    : "text-muted-foreground",
-                )}
+                onClick={() => onNavigate("root")}
+                className="truncate rounded px-2 py-1 transition-colors text-muted-foreground hover:bg-accent"
               >
-                {node.name}
+                Home
               </button>
-            </div>
-          ))}
+              <ChevronRight
+                size={14}
+                className="shrink-0 text-muted-foreground"
+              />
+              <button
+                onClick={() => onNavigate(currentId)}
+                className="truncate rounded px-2 py-1 transition-colors font-semibold text-foreground"
+              >
+                {currentId.split("/").pop() || currentId}
+              </button>
+            </>
+          )}
         </nav>
 
         <div className="relative">
@@ -103,23 +150,72 @@ export function ExplorerToolbar({
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <input
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search files..."
             className="h-8 w-56 rounded-md border border-border bg-card pl-8 pr-3 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/40"
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <select
+            value={sortBy}
+            onChange={(e) => onSortChange(e.target.value)}
+            className="h-8 rounded-md border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
+          >
+            <option value="">Sort by</option>
+            <option value="name">Name</option>
+            <option value="size">Size</option>
+            <option value="created">Created</option>
+            <option value="modified">Modified</option>
+          </select>
+
+          <select
+            value={sortOrder}
+            onChange={(e) => onSortOrderChange(e.target.value)}
+            className="h-8 rounded-md border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
+            disabled={!sortBy}
+          >
+            <option value="asc">A-Z</option>
+            <option value="desc">Z-A</option>
+          </select>
         </div>
       </div>
 
       <div className="flex h-11 items-center justify-between border-t border-border px-4">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
           <ActionBtn
             icon={FolderPlus}
             label="New Folder"
             onClick={onNewFolder}
           />
           <ActionBtn icon={Upload} label="Upload" onClick={onUpload} />
-          <MoreMenu selectedIds={selectedIds} onMoveToTrash={onMoveToTrash} />
+          <button
+            onClick={handleSelectAll}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              areAllItemsSelected ? "bg-accent text-foreground" : "",
+            )}
+            title={areAllItemsSelected ? "Deselect all" : "Select all"}
+          >
+            <Check size={14} />
+            <span className="ml-1">Select all</span>
+          </button>
+          <MoreMenu
+            selectedIds={selectedIds}
+            onMoveToTrash={onMoveToTrash}
+            onDelete={onDelete}
+            onDownload={onDownload}
+            onRename={onRename}
+            onCopy={onCopy}
+            onCut={onCut}
+            onPaste={onPaste}
+            canPaste={canPaste}
+            onCompress={onCompress}
+            onSelectAll={handleSelectAll}
+            onShare={onShare}
+            items={items}
+          />
         </div>
 
         <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">

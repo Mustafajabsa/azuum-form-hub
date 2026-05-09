@@ -32,6 +32,14 @@ client.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Debug: Log the actual URL being requested
+    console.log("=== AXIOS REQUEST DEBUG ===");
+    console.log("Method:", config.method?.toUpperCase());
+    console.log("URL:", config.baseURL + config.url);
+    console.log("Full config:", config);
+    console.log("=== END AXIOS REQUEST DEBUG ===");
+
     return config;
   },
   (error) => {
@@ -68,9 +76,9 @@ client.interceptors.response.use(
           return client(originalRequest);
         }
       } catch (refreshError) {
-        // Refresh failed, clear tokens and redirect to login
+        // Refresh failed, clear tokens and redirect to landing
         tokenManager.clearTokens();
-        window.location.href = "/login";
+        window.location.href = "/landing";
         return Promise.reject(refreshError);
       }
     }
@@ -117,6 +125,19 @@ export default {
       };
     } catch (error) {
       console.error("API PUT Error:", error);
+      throw error;
+    }
+  },
+  patch: async (url: string, data?: any, config?: any) => {
+    try {
+      const response = await client.patch(url, data, config);
+      return {
+        data: response.data,
+        status: response.status,
+        headers: response.headers,
+      };
+    } catch (error) {
+      console.error("API PATCH Error:", error);
       throw error;
     }
   },

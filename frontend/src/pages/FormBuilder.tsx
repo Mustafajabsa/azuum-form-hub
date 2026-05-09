@@ -496,8 +496,8 @@ export default function FormBuilder() {
   const updateField = (id: string, updates: Partial<FormField>) => {
     setFields(
       fields.map((field) =>
-        field.id === id ? { ...field, ...updates } : field
-      )
+        field.id === id ? { ...field, ...updates } : field,
+      ),
     );
 
     if (selectedField?.id === id) {
@@ -521,7 +521,7 @@ export default function FormBuilder() {
       // Limit the width between 250px and 50% of viewport
       const clampedWidth = Math.min(
         Math.max(newWidth, 250),
-        window.innerWidth * 0.5
+        window.innerWidth * 0.5,
       );
       setPanelWidth(clampedWidth);
     };
@@ -756,7 +756,7 @@ export default function FormBuilder() {
                             .includes(searchQuery.toLowerCase()) ||
                           field.type
                             .toLowerCase()
-                            .includes(searchQuery.toLowerCase())
+                            .includes(searchQuery.toLowerCase()),
                       ).map((field) => (
                         <div
                           key={field.type}
@@ -799,7 +799,7 @@ export default function FormBuilder() {
                     onClick={() => {
                       if (fields.length === 0) {
                         alert(
-                          "Please add at least one field to the form before previewing."
+                          "Please add at least one field to the form before previewing.",
                         );
                         return;
                       }

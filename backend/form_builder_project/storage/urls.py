@@ -13,13 +13,19 @@ from .views import (
     FileMoveAPIView,
     FileRenameAPIView,
     FileShareCreateAPIView,
+    FileShareInfoAPIView,
+    FileShareBulkInfoAPIView,
     FileShareAccessAPIView,
     FileShareRevokeAPIView,
     FileCopyAPIView,
     FileMetaDataAPIView,
     BulkFileDeleteAPIView,
     BulkFileDownloadAPIView,
-    StorageStatsAPIView
+    StorageStatsAPIView,
+    MixedDownloadAPIView,
+    MixedMoveAPIView,
+    FileCompressAPIView,
+    MixedShareAPIView,
 )
 
 router = DefaultRouter()
@@ -38,6 +44,8 @@ urlpatterns = [
     path('files/move/', FileMoveAPIView.as_view(), name='file-move'),
     path('files/rename/', FileRenameAPIView.as_view(), name='file-rename'),
     path('files/share/',FileShareCreateAPIView.as_view(), name='file-share-create'),
+    path('files/share/<uuid:token>/',FileShareInfoAPIView.as_view(), name='file-share-info'),
+    path('files/share/bulk/',FileShareBulkInfoAPIView.as_view(), name='file-share-bulk-info'),
     path('files/shared/<uuid:token>/',FileShareAccessAPIView.as_view(), name='file-share-access'),
     path('files/share/<uuid:token>/revoke/',FileShareRevokeAPIView.as_view(), name='file-share-revoke'),
     path('files/copy/', FileCopyAPIView.as_view(), name='file-copy'),
@@ -45,6 +53,10 @@ urlpatterns = [
     path('files/bulk-delete/', BulkFileDeleteAPIView.as_view(), name='file-bulk-delete'),
     path('files/bulk-download/', BulkFileDownloadAPIView.as_view(), name='file-bulk-download'),
     path('files/stats/', StorageStatsAPIView.as_view(), name='storage-stats'),
+    path('files/mixed-download/', MixedDownloadAPIView.as_view(), name='mixed-download'),
+    path('files/mixed-move/', MixedMoveAPIView.as_view(), name='mixed-move'),
+    path('files/compress/', FileCompressAPIView.as_view(), name='file-compress'),
+    path('files/mixed-share/', MixedShareAPIView.as_view(), name='mixed-share'),
 
     # FileInfo metadata management
     path('fileinfo/', FileInfoListCreateAPIView.as_view(), name='fileinfo-list'),
