@@ -7,6 +7,7 @@ export type FileKind =
   | "audio"
   | "archive"
   | "pdf"
+  | "presentation"
   | "other";
 
 export interface FileNode {
@@ -55,6 +56,7 @@ export const getFileKind = (
 
   const imageExts = ["jpg", "jpeg", "png", "gif", "bmp", "svg", "webp", "heic"];
   const docExts = ["doc", "docx", "txt", "md", "rtf"];
+  const presentationExts = ["ppt", "pptx", "key", "odp"];
   const pdfExts = ["pdf"];
   const codeExts = [
     "js",
@@ -76,6 +78,7 @@ export const getFileKind = (
 
   if (imageExts.includes(ext)) return "image";
   if (pdfExts.includes(ext)) return "pdf";
+  if (presentationExts.includes(ext)) return "presentation";
   if (docExts.includes(ext)) return "doc";
   if (codeExts.includes(ext)) return "code";
   if (videoExts.includes(ext)) return "video";

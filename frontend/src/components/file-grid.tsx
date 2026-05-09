@@ -1,6 +1,7 @@
 import { FileIcon } from "./file-icon";
 import { cn } from "@/lib/utils";
-import type { FileNode } from "@/pages/Storage";
+import type { FileNode } from "./file-utils";
+import React from "react";
 
 // Helper functions (moved from lib/file-data)
 const formatBytes = (bytes: number): string => {
@@ -24,10 +25,17 @@ interface Props {
     clickedId: string,
     shiftKey: boolean,
     ctrlKey: boolean,
+    clickedItem?: FileNode,
   ) => void;
   onOpen: (node: FileNode) => void;
   view: "grid" | "list";
   onDeselectAll: () => void;
+  onDelete?: () => void;
+  onDragStart?: (e: React.DragEvent, node: FileNode) => void;
+  onDragEnd?: () => void;
+  onDrop?: (e: React.DragEvent, targetNode: FileNode) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
 }
 
 export function FileGrid({
@@ -37,7 +45,66 @@ export function FileGrid({
   onOpen,
   view,
   onDeselectAll,
+  onDelete,
+  onDragStart,
+  onDragEnd,
+  onDrop,
+  onDragOver,
+  onDragLeave,
 }: Props) {
+  console.log("=== FILE GRID PROPS DEBUG ===");
+  console.log("Items received:", items.length);
+  console.log(
+    "Items details:",
+    items.map((item) => ({ name: item.name, kind: item.kind, id: item.id })),
+  );
+  console.log("Selected IDs:", Array.from(selectedIds));
+  console.log("View mode:", view);
+
+  // Check if files are present
+  const files = items.filter((item) => item.kind !== "folder");
+  const folders = items.filter((item) => item.kind === "folder");
+  console.log("Files count:", files.length);
+  console.log("Folders count:", folders.length);
+  console.log(
+    "Files:",
+    files.map((f) => ({ name: f.name, id: f.id })),
+  );
+  console.log("=== END PROPS DEBUG ===");
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center text-center text-muted-foreground">
+        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+          <FileIcon kind="folder" size={26} filled />
+        </div>
+        <p className="text-sm font-medium text-foreground">
+          This folder is empty
+        </p>
+        <p className="mt-1 text-xs">
+          Drop files here or use the upload button.
+        </p>
+      </div>
+    );
+  }
+
+  // Handle keyboard delete - disabled to prevent accidental deletion
+  // React.useEffect(() => {
+  //   const handleKeyDown = (e: KeyboardEvent) => {
+  //     if (
+  //       (e.key === "Delete" || e.key === "Backspace") &&
+  //       selectedIds.size > 0
+  //     ) {
+  //       e.preventDefault();
+  //       onDelete?.();
+  //     }
+  //   };
+
+  //   document.addEventListener("keydown", handleKeyDown);
+  //   return () => {
+  //     document.removeEventListener("keydown", handleKeyDown);
+  //   };
+  // }, [selectedIds, onDelete]);
   if (items.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center text-center text-muted-foreground">
@@ -87,14 +154,59 @@ export function FileGrid({
               <tr
                 key={node.id}
                 data-item-id={node.id}
-                onClick={(e) =>
+                draggable={selectedIds.has(node.id) || selectedIds.size > 0}
+                onDragStart={(e) => {
+                  if (onDragStart) {
+                    onDragStart(e, node);
+                  }
+                }}
+                onDragEnd={() => {
+                  if (onDragEnd) {
+                    onDragEnd();
+                  }
+                }}
+                onDrop={(e) => {
+                  if (onDrop && node.kind === "folder") {
+                    e.preventDefault();
+                    onDrop(e, node);
+                  }
+                }}
+                onDragOver={(e) => {
+                  if (onDragOver && node.kind === "folder") {
+                    e.preventDefault();
+                    onDragOver(e);
+                  }
+                }}
+                onDragLeave={(e) => {
+                  if (onDragLeave && node.kind === "folder") {
+                    onDragLeave(e);
+                  }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent event bubbling to container
+                  console.log(
+                    "List item clicked:",
+                    node.name,
+                    "ID:",
+                    node.id,
+                    "Type:",
+                    node.kind,
+                  );
+                  console.log("Current selectedIds:", Array.from(selectedIds));
+                  console.log(
+                    "Shift key:",
+                    e.shiftKey,
+                    "Ctrl/Meta key:",
+                    e.ctrlKey || e.metaKey,
+                  );
                   onSelect(
                     selectedIds,
                     node.id,
                     e.shiftKey,
                     e.ctrlKey || e.metaKey,
-                  )
-                }
+                    node,
+                  );
+                }}
                 onDoubleClick={() => onOpen(node)}
                 className={cn(
                   "cursor-default border-b border-border/50 transition-colors hover:bg-accent/40",
@@ -131,10 +243,20 @@ export function FileGrid({
     );
   }
 
+  console.log("=== FILE GRID RENDER DEBUG ===");
+  console.log("Total items to render:", items.length);
+  console.log(
+    "Items details:",
+    items.map((item) => ({ name: item.name, kind: item.kind, id: item.id })),
+  );
+  console.log("Selected IDs:", Array.from(selectedIds));
+  console.log("=== END RENDER DEBUG ===");
+
   return (
     <div
       className="flex-1 overflow-auto p-4"
       onClick={(e) => {
+        console.log("FileGrid render - items count:", items.length);
         // Check if click is on empty space (not on an item)
         const target = e.target as HTMLElement;
         const isItem = target.closest("button[data-item-id]");
@@ -148,9 +270,62 @@ export function FileGrid({
           <button
             key={node.id}
             data-item-id={node.id}
-            onClick={(e) =>
-              onSelect(selectedIds, node.id, e.shiftKey, e.ctrlKey || e.metaKey)
-            }
+            draggable={selectedIds.has(node.id) || selectedIds.size > 0}
+            onDragStart={(e) => {
+              if (onDragStart) {
+                onDragStart(e, node);
+              }
+            }}
+            onDragEnd={() => {
+              if (onDragEnd) {
+                onDragEnd();
+              }
+            }}
+            onDrop={(e) => {
+              if (onDrop && node.kind === "folder") {
+                e.preventDefault();
+                onDrop(e, node);
+              }
+            }}
+            onDragOver={(e) => {
+              if (onDragOver && node.kind === "folder") {
+                e.preventDefault();
+                onDragOver(e);
+              }
+            }}
+            onDragLeave={(e) => {
+              if (onDragLeave && node.kind === "folder") {
+                onDragLeave(e);
+              }
+            }}
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent event bubbling to container
+              console.log(
+                "=== FILE CLICK DEBUG ===",
+                "File clicked:",
+                node.name,
+                "ID:",
+                node.id,
+                "Type:",
+                node.kind,
+              );
+              console.log("Current selectedIds:", Array.from(selectedIds));
+              console.log(
+                "Shift key:",
+                e.shiftKey,
+                "Ctrl/Meta key:",
+                e.ctrlKey || e.metaKey,
+              );
+              console.log("About to call onSelect...");
+              onSelect(
+                selectedIds,
+                node.id,
+                e.shiftKey,
+                e.ctrlKey || e.metaKey,
+                node,
+              );
+              console.log("=== END FILE CLICK DEBUG ===");
+            }}
             onDoubleClick={() => onOpen(node)}
             className={cn(
               "group flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors",

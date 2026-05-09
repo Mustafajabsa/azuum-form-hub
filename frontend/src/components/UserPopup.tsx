@@ -34,9 +34,9 @@ export function UserPopup() {
 
   return (
     <TooltipProvider delayDuration={100}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <Tooltip>
+          <TooltipTrigger asChild>
             <PopoverTrigger asChild>
               <button
                 className="flex items-center gap-3 w-full px-3 py-2 rounded hover:bg-sidebar-accent hover:text-sidebar-primary transition-colors text-muted-foreground"
@@ -53,69 +53,69 @@ export function UserPopup() {
                 <span className="truncate text-sm">{displayName}</span>
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-0" align="start" side="right">
-              <div className="p-4 space-y-4">
-                {/* User Header */}
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="text-lg font-medium text-primary">
-                      {initials}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium truncate">{displayName}</h3>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {user.email}
-                    </p>
-                  </div>
-                </div>
-
-                {/* User Details */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Role</span>
-                    <Badge variant="secondary" className="capitalize">
-                      {user.role}
-                    </Badge>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-sm font-medium">User ID</span>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {user.id}
-                    </p>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-sm font-medium">Member Since</span>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(user.created_at).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </p>
-                  </div>
-
-                  {/* <div className="space-y-1">
-                    <span className="text-sm font-medium">Last Updated</span>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(user.updated_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
-                    </p>
-                  </div> */}
-                </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={10}>
+            <p>User Profile</p>
+          </TooltipContent>
+        </Tooltip>
+        <PopoverContent className="w-80 p-0" align="start" side="right">
+          <div className="p-4 space-y-4">
+            {/* User Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-lg font-medium text-primary">
+                  {initials}
+                </span>
               </div>
-            </PopoverContent>
-          </Popover>
-        </TooltipTrigger>
-        <TooltipContent side="right" sideOffset={10}>
-          <p>User Profile</p>
-        </TooltipContent>
-      </Tooltip>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-medium truncate">{displayName}</h3>
+                <p className="text-sm text-muted-foreground truncate">
+                  {user.email}
+                </p>
+              </div>
+            </div>
+
+            {/* User Details */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Role</span>
+                <Badge variant="secondary" className="capitalize">
+                  {user.role}
+                </Badge>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-sm font-medium">User ID</span>
+                <p className="text-sm text-muted-foreground font-mono">
+                  {user.id}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-sm font-medium">Member Since</span>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(user.created_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </p>
+              </div>
+
+              {/* <div className="space-y-1">
+                <span className="text-sm font-medium">Last Updated</span>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(user.updated_at).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </p>
+              </div> */}
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
     </TooltipProvider>
   );
 }

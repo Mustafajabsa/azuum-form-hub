@@ -36,6 +36,75 @@ const Landing = () => {
     website: "",
   });
 
+  // Helper function to get user-friendly error messages
+  const getErrorMessage = (error: any): string => {
+    if (!error) return "";
+
+    // Handle network errors
+    if (error.code === "NETWORK_ERROR" || !error.response) {
+      return "Network error. Please check your internet connection and try again.";
+    }
+
+    // Handle HTTP status codes
+    const status = error.response?.status;
+    const data = error.response?.data;
+
+    switch (status) {
+      case 400:
+        // Bad Request - validation errors
+        if (data?.non_field_errors) {
+          return data.non_field_errors[0] || "Invalid input data.";
+        }
+        if (data?.detail) {
+          return data.detail;
+        }
+        return "Please check your input and try again.";
+
+      case 401:
+        // Unauthorized
+        if (data?.detail) {
+          // Handle specific Django REST framework messages
+          if (data.detail.includes("No active account")) {
+            return "Invalid username or password.";
+          }
+          if (data.detail.includes("Invalid credentials")) {
+            return "Invalid username or password.";
+          }
+          if (data.detail.includes("credentials")) {
+            return "Invalid username or password.";
+          }
+          return data.detail;
+        }
+        return "Invalid username or password.";
+
+      case 403:
+        // Forbidden
+        return "You don't have permission to perform this action.";
+
+      case 404:
+        // Not Found
+        return "The requested resource was not found.";
+
+      case 429:
+        // Too Many Requests
+        return "Too many requests. Please wait a moment and try again.";
+
+      case 500:
+        // Internal Server Error
+        return "Server error. Please try again later.";
+
+      default:
+        // Generic error
+        if (data?.detail) {
+          return data.detail;
+        }
+        if (data?.message) {
+          return data.message;
+        }
+        return "An error occurred. Please try again.";
+    }
+  };
+
   // Redirect authenticated users to dashboard
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -126,9 +195,7 @@ const Landing = () => {
               </div>
               {loginError && (
                 <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-md text-sm">
-                  {loginError instanceof Error
-                    ? loginError.message
-                    : "Login failed. Please try again."}
+                  {getErrorMessage(loginError)}
                 </div>
               )}
               <Button
@@ -293,9 +360,7 @@ const Landing = () => {
 
               {registerError && (
                 <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-md text-sm">
-                  {registerError instanceof Error
-                    ? registerError.message
-                    : "Registration failed. Please try again."}
+                  {getErrorMessage(registerError)}
                 </div>
               )}
 
