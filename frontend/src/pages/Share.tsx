@@ -20,6 +20,8 @@ import {
   FileCode,
   File,
   ExternalLink,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { fileService } from "@/api/services/storageService";
@@ -59,6 +61,7 @@ export default function Share() {
   const [shareInfo, setShareInfo] = useState<ShareInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Parse tokens from URL or query parameters
   const getTokensFromUrl = (): string[] => {
@@ -95,18 +98,31 @@ export default function Share() {
       try {
         setLoading(true);
 
-        // Make API calls to fetch shared items by tokens
-        if (tokens.length === 1) {
-          // Single token - use getSharedItem
-          const response = await fileService.getSharedItem(tokens[0]);
-          const item = response.data;
+        // Use the same getSharedItems endpoint for both single and multiple tokens
+        // This ensures consistent behavior and follows the same method as multiple selection
+        const response = await fileService.getSharedItems(tokens);
+        const items = response.data.shared || response.data || [];
 
+        console.log("🔍 Share Response:", response.data);
+
+        // Check each item's is_viewable value and type
+        items.forEach((item, index) => {
+          console.log(`📋 Item ${index}:`, {
+            name: item.original_name || item.name,
+            type: item.type,
+            is_viewable: item.is_viewable,
+            is_viewable_type: typeof item.is_viewable,
+            is_viewable_value: JSON.stringify(item.is_viewable),
+          });
+        });
+
+        const sharedItems: SharedItem[] = items.map((item: any) => {
           const itemName =
             item.original_name ||
             item.name ||
             item.path?.split("/").pop() ||
             "Unknown";
-          const sharedItem: SharedItem = {
+          return {
             id: item.id || item.token,
             name: itemName,
             original_name: item.original_name,
@@ -125,83 +141,22 @@ export default function Share() {
 
             is_viewable: item.is_viewable,
           };
+        });
 
-          console.log("🔍 API Response Item:", item);
-          console.log("🔍 Item Structure:", JSON.stringify(item, null, 2));
-          console.log("✅ Parsed Viewable Status:", sharedItem.is_viewable);
-          console.log("✅ Viewable Type:", typeof sharedItem.is_viewable);
-          console.log(
-            "✅ Viewable Value:",
-            JSON.stringify(sharedItem.is_viewable),
-          );
+        setSharedItems(sharedItems);
 
-          setSharedItems([sharedItem]);
-
-          if (item.expires_at || item.max_access || item.shared_by) {
-            setShareInfo({
-              title: "Shared File",
-              expiresAt: item.expires_at,
-              maxAccess: item.max_access,
-              currentAccess: item.current_access,
-              sharedBy: item.shared_by,
-            });
-          }
-        } else {
-          // Multiple tokens - use getSharedItems endpoint
-          const response = await fileService.getSharedItems(tokens);
-          const items = response.data.shared || response.data || [];
-
-          console.log("🔍 Bulk Share Response:", response.data);
-
-          // Check each item's is_viewable value and type
-          items.forEach((item, index) => {
-            console.log(`📋 Item ${index}:`, {
-              name: item.original_name || item.name,
-              type: item.type,
-              is_viewable: item.is_viewable,
-              is_viewable_type: typeof item.is_viewable,
-              is_viewable_value: JSON.stringify(item.is_viewable),
-            });
+        if (items.length > 0) {
+          const firstItem = items[0];
+          // Set title based on number of items
+          const title =
+            items.length === 1 ? "Shared File" : "Shared Collection";
+          setShareInfo({
+            title,
+            expiresAt: firstItem.expires_at,
+            maxAccess: firstItem.max_access,
+            currentAccess: firstItem.current_access,
+            sharedBy: firstItem.shared_by,
           });
-          const sharedItems: SharedItem[] = items.map((item: any) => {
-            const itemName =
-              item.original_name ||
-              item.name ||
-              item.path?.split("/").pop() ||
-              "Unknown";
-            return {
-              id: item.id || item.token,
-              name: itemName,
-              original_name: item.original_name,
-              type: item.type || (item.mime_type ? "file" : "folder"),
-              file_size: item.file_size,
-              mime_type: item.mime_type,
-              path: item.path,
-              token: item.token,
-              expires_at: item.expires_at,
-              max_access: item.max_access,
-              current_access: item.current_access,
-              shared_by: item.shared_by,
-              download_url: item.download_url,
-              preview_url: item.preview_url,
-              file_extension: getFileExtension(itemName),
-
-              is_viewable: item.is_viewable,
-            };
-          });
-
-          setSharedItems(sharedItems);
-
-          if (items.length > 0) {
-            const firstItem = items[0];
-            setShareInfo({
-              title: "Shared Collection",
-              expiresAt: firstItem.expires_at,
-              maxAccess: firstItem.max_access,
-              currentAccess: firstItem.current_access,
-              sharedBy: firstItem.shared_by,
-            });
-          }
         }
       } catch (err) {
         setError("Failed to load shared content");
@@ -442,6 +397,22 @@ export default function Share() {
     }
   };
 
+  // Dark mode toggle function
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
+  // Apply dark mode classes to document
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add("dark");
+      document.body.classList.add("dark:bg-gray-900", "dark:text-white");
+    } else {
+      document.documentElement.classList.remove("dark");
+      document.body.classList.remove("dark:bg-gray-900", "dark:text-white");
+    }
+  }, [isDarkMode]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -468,36 +439,67 @@ export default function Share() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className={`min-h-screen ${isDarkMode ? "bg-gray-900" : "bg-gray-50"} transition-colors duration-200`}
+    >
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div
+        className={`${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-b transition-colors duration-200`}
+      >
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <Share2 className="h-8 w-8 text-blue-600" />
+              <Share2
+                className={`h-8 w-8 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}
+              />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h1
+                  className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-gray-900"}`}
+                >
                   {shareInfo?.title || "Shared Content"}
                 </h1>
                 {shareInfo?.description && (
-                  <p className="text-gray-600 mt-1">{shareInfo.description}</p>
+                  <p
+                    className={
+                      isDarkMode ? "text-gray-300 mt-1" : "text-gray-600 mt-1"
+                    }
+                  >
+                    {shareInfo.description}
+                  </p>
                 )}
               </div>
             </div>
-            {sharedItems.length > 1 && (
+            <div className="flex items-center space-x-3">
+              {/* Dark Mode Toggle */}
               <Button
-                onClick={handleDownloadAll}
-                className="flex items-center space-x-2"
+                variant="outline"
+                size="sm"
+                onClick={toggleDarkMode}
+                className={`p-2 ${isDarkMode ? "border-gray-600 text-gray-300 hover:bg-gray-700" : "border-gray-300 text-gray-600 hover:bg-gray-100"}`}
               >
-                <DownloadIcon className="h-4 w-4" />
-                <span>Download All</span>
+                {isDarkMode ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
               </Button>
-            )}
+              {sharedItems.length > 1 && (
+                <Button
+                  onClick={handleDownloadAll}
+                  className="flex items-center space-x-2"
+                >
+                  <DownloadIcon className="h-4 w-4" />
+                  <span>Download All</span>
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Share Info */}
           {shareInfo && (
-            <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-600">
+            <div
+              className={`mt-4 flex flex-wrap gap-4 text-sm ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}
+            >
               {shareInfo.sharedBy && (
                 <div className="flex items-center space-x-1">
                   <Users className="h-4 w-4" />
@@ -528,20 +530,27 @@ export default function Share() {
       <div className="max-w-6xl mx-auto px-4 py-8">
         {sharedItems.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-gray-400 mb-4">
+            <div
+              className={`${isDarkMode ? "text-gray-500" : "text-gray-400"} mb-4`}
+            >
               <FileIcon className="h-16 w-16 mx-auto" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3
+              className={`text-lg font-medium ${isDarkMode ? "text-white" : "text-gray-900"} mb-2`}
+            >
               No items found
             </h3>
-            <p className="text-gray-600">
+            <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
               The shared content is not available or has expired.
             </p>
           </div>
         ) : (
           <div className="grid gap-4">
             {sharedItems.map((item) => (
-              <Card key={item.id} className="hover:shadow-md transition-shadow">
+              <Card
+                key={item.id}
+                className={`${isDarkMode ? "bg-gray-800 border-gray-700 hover:bg-gray-750" : "bg-white border-gray-200"} hover:shadow-md transition-shadow transition-colors duration-200`}
+              >
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
@@ -553,17 +562,23 @@ export default function Share() {
                             item.type,
                           );
                           return (
-                            <IconComponent className="h-10 w-10 text-blue-600" />
+                            <IconComponent
+                              className={`h-10 w-10 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}
+                            />
                           );
                         })()}
                       </div>
 
                       {/* File Info */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-medium text-gray-900 truncate">
+                        <h3
+                          className={`text-lg font-medium ${isDarkMode ? "text-white" : "text-gray-900"} truncate`}
+                        >
                           {item.name}
                         </h3>
-                        <div className="mt-1 text-sm text-gray-500">
+                        <div
+                          className={`mt-1 text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}
+                        >
                           {getFileDescription(
                             item.name,
                             item.type,
@@ -601,18 +616,18 @@ export default function Share() {
                               <span>View</span>
                             </Button>
                           )}
-
-                          {/* 3. Download Button - Always show for files/folders */}
-                          <Button
-                            size="sm"
-                            onClick={() => handleDownload(item)}
-                            className="flex items-center space-x-1"
-                          >
-                            <DownloadIcon className="h-4 w-4" />
-                            <span>Download</span>
-                          </Button>
                         </>
                       )}
+
+                      {/* 3. Download Button - Always show for both files and folders */}
+                      <Button
+                        size="sm"
+                        onClick={() => handleDownload(item)}
+                        className="flex items-center space-x-1"
+                      >
+                        <DownloadIcon className="h-4 w-4" />
+                        <span>Download</span>
+                      </Button>
                     </div>
                   </div>
                 </CardContent>

@@ -1,4 +1,5 @@
 import { FileIcon } from "./file-icon";
+import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "./file-utils";
 import React from "react";
@@ -36,6 +37,7 @@ interface Props {
   onDrop?: (e: React.DragEvent, targetNode: FileNode) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDragLeave?: (e: React.DragEvent) => void;
+  isItemFavorited?: (item: FileNode) => boolean;
 }
 
 export function FileGrid({
@@ -51,6 +53,7 @@ export function FileGrid({
   onDrop,
   onDragOver,
   onDragLeave,
+  isItemFavorited,
 }: Props) {
   console.log("=== FILE GRID PROPS DEBUG ===");
   console.log("Items received:", items.length);
@@ -222,6 +225,9 @@ export function FileGrid({
                       filled={node.kind === "folder"}
                     />
                     <span className="truncate">{node.name}</span>
+                    {isItemFavorited?.(node) && (
+                      <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                    )}
                   </div>
                 </td>
                 <td className="hidden px-4 py-2 text-muted-foreground md:table-cell">
@@ -334,12 +340,17 @@ export function FileGrid({
                 "bg-[var(--selection)] hover:bg-[var(--selection)]",
             )}
           >
-            <div className="flex h-16 w-16 items-center justify-center">
+            <div className="relative flex h-16 w-16 items-center justify-center">
               <FileIcon
                 kind={node.kind}
                 size={48}
                 filled={node.kind === "folder"}
               />
+              {isItemFavorited?.(node) && (
+                <div className="absolute top-0 right-0">
+                  <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                </div>
+              )}
             </div>
             <span className="line-clamp-2 break-all text-xs font-medium text-foreground">
               {node.name}

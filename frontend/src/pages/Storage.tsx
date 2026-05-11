@@ -1,11 +1,27 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, Folder as FolderIcon, Cloud } from "lucide-react";
+import {
+  Upload,
+  Folder as FolderIcon,
+  Cloud,
+  AlertTriangle,
+} from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Progress } from "@/components/ui/progress";
 
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { ExplorerToolbar } from "@/components/explorer-toolbar";
 import { FileGrid } from "@/components/file-grid";
+import { SharedItemsGrid } from "@/components/shared-items-grid";
 import { DetailsPanel } from "@/components/details-panel";
 import { ShareDialog } from "@/components/share-dialog";
 import { ShareLinkDialog } from "@/components/share-link-dialog";
@@ -14,6 +30,7 @@ import {
   folderService,
   searchService,
   trashService,
+  favoritesService,
 } from "@/api/services/storageService";
 import { FileItem, Folder } from "@/api/services/storageService";
 import { FileKind, FileNode, getFileKind } from "@/components/file-utils";
@@ -75,6 +92,14 @@ export default function Storage() {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [showShareLinkDialog, setShowShareLinkDialog] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
+  const [shareSentType, setShareSentType] = useState<"internal" | "external">(
+    "internal",
+  );
+  const [showTrashAlert, setShowTrashAlert] = useState(false);
+  const [showRemoveFavoritesDialog, setShowRemoveFavoritesDialog] =
+    useState(false);
+  const [isOpeningFile, setIsOpeningFile] = useState(false);
+  const [openingProgress, setOpeningProgress] = useState(0);
 
   // Query for files and folders from backend API
   const { data: filesData, isLoading: isLoadingFiles } = useQuery({
@@ -129,6 +154,39 @@ export default function Storage() {
     queryKey: ["folderContents", selectedItemPath],
     queryFn: () => fileService.getFiles(1, 1000, selectedItemPath!),
     enabled: !!selectedItemPath && selectedItemDetails?.data?.type === "folder",
+    staleTime: 0,
+  });
+
+  // Auto-set shareSentType based on navigation
+  useEffect(() => {
+    if (currentId === "shared-sent-internal") {
+      setShareSentType("internal");
+    } else if (currentId === "shared-sent-external") {
+      setShareSentType("external");
+    }
+  }, [currentId]);
+
+  // Query for shared items
+  const { data: sharedItemsData, isLoading: isLoadingSharedItems } = useQuery({
+    queryKey: ["sharedItems"],
+    queryFn: () => fileService.getSharedItemsList(),
+    enabled: currentId === "shared-sent",
+    staleTime: 0,
+  });
+
+  // Query for shared received items
+  const { data: sharedReceivedData, isLoading: isLoadingSharedReceived } =
+    useQuery({
+      queryKey: ["sharedReceived"],
+      queryFn: () => fileService.getSharedReceivedItems(),
+      enabled: currentId === "shared-received",
+      staleTime: 0,
+    });
+
+  // Query for favorites (load globally to show star indicators)
+  const { data: favoritesData, isLoading: isLoadingFavorites } = useQuery({
+    queryKey: ["favorites"],
+    queryFn: () => favoritesService.getFavorites(),
     staleTime: 0,
   });
 
@@ -250,8 +308,7 @@ export default function Storage() {
   });
 
   const moveToTrashMutation = useMutation({
-    mutationFn: (data: { itemIds: string[]; itemType: "file" | "folder" }) =>
-      trashService.moveToTrash(data.itemIds, data.itemType),
+    mutationFn: (paths: string[]) => trashService.moveToTrash(paths),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folder"] });
       queryClient.invalidateQueries({ queryKey: ["files"] });
@@ -314,30 +371,6 @@ export default function Storage() {
     },
   });
 
-  const shareFileMutation = useMutation({
-    mutationFn: (data: {
-      filePath: string;
-      expiresIn?: number;
-      maxAccess?: number;
-      is_viewable?: boolean;
-    }) =>
-      fileService.shareFile(
-        data.filePath,
-        data.expiresIn,
-        data.maxAccess,
-        data.is_viewable,
-      ),
-    onSuccess: (response) => {
-      console.log("Share successful:", response.data);
-      setShareData(response.data);
-      setShowShareLinkDialog(true);
-    },
-    onError: (error) => {
-      console.error("Share failed:", error);
-      alert("Failed to generate share link. Please try again.");
-    },
-  });
-
   const mixedShareMutation = useMutation({
     mutationFn: (data: {
       paths: string[];
@@ -377,6 +410,43 @@ export default function Storage() {
       alert("Failed to generate share links. Please try again.");
     },
   });
+
+  const revokeShareMutation = useMutation({
+    mutationFn: (token: string) => fileService.revokeShare(token),
+    onSuccess: () => {
+      console.log("Share revoked successfully");
+      // Refresh the shared items list
+      queryClient.invalidateQueries({ queryKey: ["sharedItems"] });
+      setSelectedIds(new Set());
+    },
+    onError: (error) => {
+      console.error("Revoke share failed:", error);
+      alert("Failed to revoke share. Please try again.");
+    },
+  });
+
+  const removeFromFavoritesMutation = useMutation({
+    mutationFn: (ids: number[]) => favoritesService.removeFromFavorites(ids),
+    onSuccess: () => {
+      console.log("Removed from favorites successfully");
+      // Refresh the favorites list
+      queryClient.invalidateQueries({ queryKey: ["favorites"] });
+      setSelectedIds(new Set());
+    },
+    onError: (error) => {
+      console.error("Remove from favorites failed:", error);
+      alert("Failed to remove items from favorites. Please try again.");
+    },
+  });
+
+  const handleRevokeShare = (token: string) => {
+    const proceed = confirm(
+      "Are you sure you want to revoke this share link? This action cannot be undone.",
+    );
+    if (proceed) {
+      revokeShareMutation.mutate(token);
+    }
+  };
 
   const navigateToFolder = (id: string) => {
     if (id === currentId) return;
@@ -453,6 +523,68 @@ export default function Storage() {
       console.log("Folder path for API call:", folderPath);
       console.log("Current user context - should see nested folders");
       navigateToFolder(folderPath);
+    } else {
+      // Handle file viewing
+      const filePath = (node as any).path || node.name;
+      console.log("Viewing file:", filePath);
+
+      // Check if trying to view file from trash
+      if (currentId === "trash") {
+        setShowTrashAlert(true);
+        return;
+      }
+
+      // Start file opening progress
+      setIsOpeningFile(true);
+      setOpeningProgress(0);
+
+      // Simulate progress updates during file loading
+      const progressInterval = setInterval(() => {
+        setOpeningProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 15;
+        });
+      }, 100);
+
+      // Use the viewFile API to get the file URL for inline viewing
+      fileService
+        .viewFile(filePath)
+        .then((response) => {
+          // Clear progress interval and set to complete
+          clearInterval(progressInterval);
+          setOpeningProgress(100);
+
+          // Create a blob URL from the response and open in new tab
+          const contentType =
+            (response.headers as any)["content-type"] ||
+            "application/octet-stream";
+          const blob = new Blob([response.data], { type: contentType });
+          const url = window.URL.createObjectURL(blob);
+
+          // Open in new tab for viewing
+          window.open(url, "_blank");
+
+          // Clean up the blob URL after a delay
+          setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+          }, 1000);
+
+          // Reset opening state after a short delay
+          setTimeout(() => {
+            setIsOpeningFile(false);
+            setOpeningProgress(0);
+          }, 500);
+        })
+        .catch((error) => {
+          console.error("Failed to view file:", error);
+          clearInterval(progressInterval);
+          setIsOpeningFile(false);
+          setOpeningProgress(0);
+          alert("Failed to view file. Please try again.");
+        });
     }
   };
 
@@ -558,7 +690,11 @@ export default function Storage() {
       // Check if we're in media folder or if we need to upload to a specific directory
       const isMediaFolder =
         currentId === "media" || currentId?.startsWith("media/");
-      const targetDirectory = isMediaFolder ? "" : currentId; // Default to media folder if no specific directory
+      const targetDirectory = isMediaFolder
+        ? ""
+        : currentId === "root"
+          ? ""
+          : currentId; // Convert "root" to empty string for backend
 
       uploadFolderMutation.mutate({
         files: filesArray,
@@ -569,7 +705,11 @@ export default function Storage() {
       // Use regular file upload API for file uploads
       const isMediaFolder =
         currentId === "media" || currentId?.startsWith("media/");
-      const targetFolder = isMediaFolder ? "" : currentId; // Default to media folder if no specific directory
+      const targetFolder = isMediaFolder
+        ? ""
+        : currentId === "root"
+          ? ""
+          : currentId; // Convert "root" to empty string for backend
 
       uploadFilesMutation.mutate({
         files: filesArray,
@@ -823,45 +963,81 @@ export default function Storage() {
   const handleMoveToTrash = () => {
     if (selectedIds.size === 0) return;
 
-    const selectedIdsArray = Array.from(selectedIds);
-    // For simplicity, assume all selected items are files
-    // In a real implementation, you'd need to determine the type of each item
-    moveToTrashMutation.mutate({
-      itemIds: selectedIdsArray,
-      itemType: "file",
+    // Find the selected items from the current items list
+    const selectedItems = items.filter((item) => selectedIds.has(item.id));
+
+    // Get paths for all selected items
+    const pathsToTrash = selectedItems.map((item) => {
+      // Use the full path if available from the API response
+      if ((item as any).path) {
+        return (item as any).path;
+      } else {
+        // Construct full path by combining current folder context with item name
+        if (currentId === "root") {
+          return item.name;
+        } else {
+          return `${currentId}/${item.name}`;
+        }
+      }
     });
+
+    // Sanitize paths to convert Windows backslashes to forward slashes
+    const sanitizePath = (path: string) => path.replace(/\\/g, "/");
+    const sanitizedPaths = pathsToTrash.map((path) => sanitizePath(path));
+
+    moveToTrashMutation.mutate(sanitizedPaths);
   };
 
   const handleDelete = () => {
     if (selectedIds.size === 0) return;
 
     const selectedIdsArray = Array.from(selectedIds);
-    // Get paths for all selected items
-    const pathsToDelete = selectedIdsArray.map((id) => {
-      // Find the item in our current items to get its path
-      const item = items.find((item) => item.id === id);
 
-      if (item?.kind === "folder") {
-        // For folders, use the folder path
-        return (item as any).path || item.name;
-      } else {
-        // For files, construct the path from folder structure
-        return (item as any).path || item.name;
+    if (currentId === "trash") {
+      // Handle trash-specific deletion using IDs
+      const proceed = confirm(
+        `Are you sure you want to permanently delete ${selectedIdsArray.length} item(s)? This action cannot be undone.`,
+      );
+      if (proceed) {
+        trashService
+          .deletePermanently(selectedIdsArray, "file")
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ["trash"] });
+            setSelectedIds(new Set());
+          })
+          .catch((error) => {
+            console.error("Delete permanently failed:", error);
+            alert("Failed to delete items permanently. Please try again.");
+          });
       }
-    });
+    } else {
+      // Handle regular file/folder deletion
+      const pathsToDelete = selectedIdsArray.map((id) => {
+        // Find the item in our current items to get its path
+        const item = items.find((item) => item.id === id);
 
-    // Use bulk delete for all selected items
-    fileService
-      .batchDeleteFiles(pathsToDelete)
-      .then(() => {
-        // Refresh the files query to update the UI
-        queryClient.invalidateQueries({ queryKey: ["files", currentId] });
-        queryClient.invalidateQueries({ queryKey: ["files"] });
-        setSelectedIds(new Set());
-      })
-      .catch((error) => {
-        console.error("Error deleting items:", error);
+        if (item?.kind === "folder") {
+          // For folders, use the folder path
+          return (item as any).path || item.name;
+        } else {
+          // For files, construct the path from folder structure
+          return (item as any).path || item.name;
+        }
       });
+
+      // Use bulk delete for all selected items
+      fileService
+        .batchDeleteFiles(pathsToDelete)
+        .then(() => {
+          // Refresh the files query to update the UI
+          queryClient.invalidateQueries({ queryKey: ["files", currentId] });
+          queryClient.invalidateQueries({ queryKey: ["files"] });
+          setSelectedIds(new Set());
+        })
+        .catch((error) => {
+          console.error("Error deleting items:", error);
+        });
+    }
   };
 
   const handleRename = () => {
@@ -982,6 +1158,48 @@ export default function Storage() {
     handleShare("external");
   };
 
+  const handleEmptyTrash = () => {
+    const proceed = confirm(
+      "Are you sure you want to empty trash? This action will permanently delete all items in trash and cannot be undone.",
+    );
+    if (proceed) {
+      trashService
+        .emptyTrash()
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["trash"] });
+          setSelectedIds(new Set());
+        })
+        .catch((error) => {
+          console.error("Empty trash failed:", error);
+          alert("Failed to empty trash. Please try again.");
+        });
+    }
+  };
+
+  const handleRestore = () => {
+    if (selectedIds.size === 0) return;
+
+    const selectedItems = items.filter((item) => selectedIds.has(item.id));
+    const itemIds = selectedItems.map((item) => item.id);
+
+    const proceed = confirm(
+      `Are you sure you want to restore ${selectedItems.length} item(s)?`,
+    );
+    if (proceed) {
+      trashService
+        .restoreFromTrash(itemIds, "file")
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["trash"] });
+          queryClient.invalidateQueries({ queryKey: ["files"] });
+          setSelectedIds(new Set());
+        })
+        .catch((error) => {
+          console.error("Restore failed:", error);
+          alert("Failed to restore items. Please try again.");
+        });
+    }
+  };
+
   const handleShare = (type: "external" | "internal") => {
     if (selectedIds.size === 0) {
       alert("Please select items to share");
@@ -1010,30 +1228,95 @@ export default function Storage() {
   ) => {
     const selectedItems = items.filter((item) => selectedIds.has(item.id));
 
-    if (selectedItems.length === 1) {
-      // Single item - use single file share endpoint
-      const selectedItem = selectedItems[0];
-      const filePath = (selectedItem as any).path || selectedItem.name;
+    // Use mixed-share endpoint for both single and multiple items
+    // This ensures consistent behavior and follows the same method as multiple selection
+    const paths = selectedItems.map((item) => (item as any).path || item.name);
 
-      shareFileMutation.mutate({
-        filePath,
-        expiresIn,
-        maxAccess,
-        is_viewable: isViewable,
-      });
-    } else {
-      // Multiple items - use mixed share endpoint
-      const paths = selectedItems.map(
-        (item) => (item as any).path || item.name,
-      );
+    mixedShareMutation.mutate({
+      paths,
+      expiresIn,
+      maxAccess,
+      is_viewable: isViewable,
+    });
+  };
 
-      mixedShareMutation.mutate({
-        paths,
-        expiresIn,
-        maxAccess,
-        is_viewable: isViewable,
-      });
+  const handleAddToFavorites = async () => {
+    if (selectedIds.size === 0) return;
+
+    // Find the selected items from the current items list
+    const selectedItems = items.filter((item) => selectedIds.has(item.id));
+
+    // Get the paths of the selected items
+    const pathsToAdd = selectedItems.map((item) => {
+      // Use the path if available, otherwise construct it
+      if ((item as any).path) {
+        return (item as any).path;
+      }
+      // Construct path based on current folder context
+      if (currentId === "root") {
+        return item.name;
+      } else {
+        return `${currentId}/${item.name}`;
+      }
+    });
+
+    console.log("Adding to favorites:", pathsToAdd);
+
+    // Add to favorites via API
+    try {
+      const response = await favoritesService.addToFavorites(pathsToAdd);
+      console.log("Added to favorites:", response.data);
+
+      // Show success message
+      const { added, skipped, failed } = response.data;
+      if (added.length > 0) {
+        console.log(`Successfully added ${added.length} item(s) to favorites`);
+      }
+      if (skipped.length > 0) {
+        console.log(`${skipped.length} item(s) were already in favorites`);
+      }
+      if (failed.length > 0) {
+        console.error(
+          `${failed.length} item(s) failed to add to favorites:`,
+          failed,
+        );
+      }
+
+      // Refresh the favorites list
+      queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    } catch (error) {
+      console.error("Failed to add items to favorites:", error);
+      alert("Failed to add items to favorites. Please try again.");
     }
+  };
+
+  const handleRemoveFromFavorites = () => {
+    if (selectedIds.size === 0) return;
+    setShowRemoveFavoritesDialog(true);
+  };
+
+  const confirmRemoveFromFavorites = () => {
+    // Convert selected IDs to numbers (favorites API expects number IDs)
+    const idsToRemove = Array.from(selectedIds).map((id) => parseInt(id, 10));
+    removeFromFavoritesMutation.mutate(idsToRemove);
+    setShowRemoveFavoritesDialog(false);
+  };
+
+  // Helper function to check if an item is in favorites
+  const isItemFavorited = (item: any) => {
+    if (!favoritesData?.data?.items) return false;
+
+    const itemPath = (item as any).path || item.name;
+    const itemName = item.name;
+
+    return favoritesData.data.items.some((favorite: any) => {
+      const favoritePath = favorite.path || favorite.item_name;
+      const favoriteName =
+        favorite.item_name || favoritePath?.split("/")?.pop();
+
+      // Check by path or name
+      return favoritePath === itemPath || favoriteName === itemName;
+    });
   };
 
   const handleSelectAll = () => {
@@ -1124,30 +1407,31 @@ export default function Storage() {
     let allItems: FileNode[] = [];
 
     if (currentId === "trash" && trashData?.data) {
-      // Handle trash data
-      allItems = trashData.data.map((item: any) => {
-        const isFolder = item.mime_type === null;
-        const fileName = item.name || item.path?.split("/").pop() || "Unknown";
+      // Handle trash data - API returns { items: [...] }
+      const trashItems = trashData.data.items || [];
+      allItems = trashItems.map((item: any) => {
+        const isFolder = item.type === "folder";
+        const fileName =
+          item.item_name || item.original_path?.split("/").pop() || "Unknown";
 
         return {
-          id: item.id || item.path,
+          id: item.id.toString(),
           name: fileName,
           kind: isFolder ? "folder" : getFileKind(fileName, false),
-          size: item.file_size || 0,
-          modified:
-            item.uploaded_at || item.created_at || new Date().toISOString(),
-          original_name: item.original_name || item.name,
-          file_size: item.file_size || 0,
-          mime_type: item.mime_type,
-          folder_id: item.folder_id,
-          owner: item.owner,
-          uploaded_at: item.uploaded_at || item.created_at,
-          is_deleted: item.is_deleted || true,
-          description: item.description,
-          parent_id: item.parent_id,
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-          path: item.path,
+          size: item.size_bytes || 0,
+          modified: item.trashed_at || new Date().toISOString(),
+          original_name: item.item_name,
+          file_size: item.size_bytes || 0,
+          mime_type: isFolder ? null : "application/octet-stream",
+          folder_id: null,
+          owner: "current",
+          uploaded_at: item.trashed_at,
+          is_deleted: true,
+          description: `Trashed from ${item.original_path}`,
+          parent_id: null,
+          created_at: item.trashed_at,
+          updated_at: item.trashed_at,
+          path: item.original_path,
         };
       });
     } else if (filesData?.data) {
@@ -1297,12 +1581,106 @@ export default function Storage() {
       allItems = [...folderItems, ...fileItems];
     }
 
+    // Handle shared-sent items
+    if (currentId === "shared-sent" && sharedItemsData?.data) {
+      allItems = sharedItemsData.data.items.map((item: any) => {
+        const isFolder = item.type === "folder";
+        // Extract filename from file_path since the new API doesn't provide original_name
+        const fileName = item.file_path
+          ? item.file_path.split("/").pop()
+          : "Unknown";
+
+        return {
+          id: item.token,
+          name: fileName,
+          kind: isFolder ? "folder" : getFileKind(fileName, false),
+          size: 0, // The new API doesn't provide file_size
+          modified: item.created_at || new Date().toISOString(),
+          original_name: fileName,
+          file_size: 0,
+          mime_type: isFolder ? null : "application/octet-stream",
+          token: item.token,
+          expires_at: item.expires_at,
+          max_access: item.max_access,
+          current_access: item.access_count,
+          shared_by: "Me", // Since these are items shared by the current user
+          download_url: item.share_url,
+          preview_url: item.share_url,
+          path: item.file_path,
+          is_viewable: item.is_viewable,
+          is_active: item.is_active,
+          is_expired: item.is_expired,
+          accesses_remaining: item.accesses_remaining,
+        };
+      });
+    }
+
+    // Handle shared-received items
+    if (currentId === "shared-received" && sharedReceivedData?.data) {
+      allItems = sharedReceivedData.data.map((item: any) => {
+        const isFolder = item.type === "folder";
+        const fileName = item.original_name || item.name || "Unknown";
+
+        return {
+          id: item.id || item.token,
+          name: fileName,
+          kind: isFolder ? "folder" : getFileKind(fileName, false),
+          size: item.file_size || 0,
+          modified: item.created_at || new Date().toISOString(),
+          original_name: item.original_name || item.name,
+          file_size: item.file_size || 0,
+          mime_type: item.mime_type,
+          token: item.token,
+          expires_at: item.expires_at,
+          max_access: item.max_access,
+          current_access: item.current_access,
+          shared_by: item.shared_by,
+          download_url: item.download_url,
+          preview_url: item.preview_url,
+          path: item.path,
+        };
+      });
+    }
+
+    // Handle favorites items
+    if (currentId === "favorites" && favoritesData?.data) {
+      allItems = favoritesData.data.items.map((item: any) => {
+        const isFolder = item.type === "folder";
+        const fileName =
+          item.item_name || item.path?.split("/").pop() || "Unknown";
+
+        return {
+          id: item.id.toString(),
+          name: fileName,
+          kind: isFolder ? "folder" : getFileKind(fileName, false),
+          size: item.size_bytes || 0, // Use actual size from backend
+          modified: item.added_at || new Date().toISOString(),
+          original_name: fileName,
+          file_size: item.size_bytes || 0,
+          mime_type: isFolder ? null : "application/octet-stream",
+          path: item.path || fileName,
+          exists: item.exists, // Include exists flag from backend
+          added_at: item.added_at,
+          is_favorite: true,
+        };
+      });
+    }
+
     // Filter by search query - now handled by API directly
     const filtered = allItems;
 
     // No client-side sorting - let backend handle all sorting
     return filtered;
-  }, [filesData, trashData, query, currentId]);
+  }, [
+    filesData,
+    trashData,
+    sharedItemsData,
+    sharedReceivedData,
+    favoritesData,
+    query,
+    currentId,
+    shareSentType,
+  ]);
 
   const selected = items.find((item) => selectedIds.has(item.id)) || null;
 
@@ -1342,6 +1720,10 @@ export default function Storage() {
           onCompress={handleCompress}
           onSelectAll={handleSelectAll}
           onShare={handleShareClick}
+          onAddToFavorites={handleAddToFavorites}
+          onRemoveFromFavorites={handleRemoveFromFavorites}
+          onEmptyTrash={handleEmptyTrash}
+          onRestore={handleRestore}
           items={items}
         />
 
@@ -1349,33 +1731,77 @@ export default function Storage() {
           {items.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               <div className="text-center">
-                <div className="text-6xl mb-4">📁</div>
+                <div className="text-6xl mb-4">
+                  {currentId === "trash"
+                    ? "🗑️"
+                    : currentId === "shared-sent"
+                      ? "📤"
+                      : currentId === "shared-received"
+                        ? "📥"
+                        : currentId === "favorites"
+                          ? "⭐"
+                          : "📁"}
+                </div>
                 <h3 className="text-lg font-medium mb-2">
-                  This folder is empty
+                  {currentId === "trash"
+                    ? "Trash is empty"
+                    : currentId === "shared-sent"
+                      ? "No sent items"
+                      : currentId === "shared-received"
+                        ? "No received items"
+                        : currentId === "favorites"
+                          ? "No favorites yet"
+                          : "This folder is empty"}
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {currentId === "root"
                     ? "Create folders or upload files to get started"
-                    : "Add files or folders to this directory"}
+                    : currentId === "trash"
+                      ? "Items moved to trash will appear here"
+                      : currentId === "shared-sent"
+                        ? "Items you share will appear here"
+                        : currentId === "shared-received"
+                          ? "Items shared with you will appear here"
+                          : currentId === "favorites"
+                            ? "Add files or folders to favorites to see them here"
+                            : "Add files or folders to this directory"}
                 </p>
               </div>
             </div>
           ) : (
             <>
-              <FileGrid
-                items={items}
-                selectedIds={selectedIds}
-                onSelect={handleSelection}
-                onOpen={open}
-                view={view}
-                onDeselectAll={handleDeselectAll}
-                onDelete={handleDelete}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-              />
+              {currentId === "shared-sent" ? (
+                <SharedItemsGrid
+                  items={items}
+                  selectedIds={selectedIds}
+                  onSelect={handleSelection}
+                  onOpen={open}
+                  view={view}
+                  onDeselectAll={handleDeselectAll}
+                  onRevoke={handleRevokeShare}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                />
+              ) : (
+                <FileGrid
+                  items={items}
+                  selectedIds={selectedIds}
+                  onSelect={handleSelection}
+                  onOpen={open}
+                  view={view}
+                  onDeselectAll={handleDeselectAll}
+                  onDelete={handleDelete}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  isItemFavorited={isItemFavorited}
+                />
+              )}
               <div className="flex h-7 items-center justify-between border-t border-border bg-toolbar px-4 text-xs text-muted-foreground">
                 <span>
                   {items.length} item{items.length === 1 ? "" : "s"}
@@ -1898,6 +2324,31 @@ export default function Storage() {
         </div>
       )}
 
+      {/* File Opening Progress Indicator */}
+      {isOpeningFile && (
+        <div className="fixed bottom-4 right-4 bg-background border border-border rounded-lg shadow-lg p-4 z-50 min-w-80">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+            <span className="text-sm font-medium">Opening file...</span>
+          </div>
+          <div className="flex justify-between text-xs mb-2">
+            <span className="text-muted-foreground">Progress</span>
+            <span className="text-muted-foreground">{openingProgress}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-1.5">
+            <div
+              className="bg-primary h-1.5 rounded-full transition-all duration-300"
+              style={{ width: `${openingProgress}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            {openingProgress < 100
+              ? "Please wait while the file opens..."
+              : "Opening complete!"}
+          </p>
+        </div>
+      )}
+
       {/* Share Dialog */}
       <ShareDialog
         open={showShareDialog}
@@ -1938,6 +2389,63 @@ export default function Storage() {
           isMasterLink={shareData.isMasterLink}
         />
       )}
+
+      {/* Trash Alert Dialog */}
+      <AlertDialog open={showTrashAlert} onOpenChange={setShowTrashAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <AlertDialogTitle>Cannot View Trash Items</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-left">
+              Files and folders in the trash cannot be opened directly. To view
+              this item, you need to restore it first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>Got it</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove from Favorites Dialog */}
+      <AlertDialog
+        open={showRemoveFavoritesDialog}
+        onOpenChange={setShowRemoveFavoritesDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <AlertDialogTitle>Remove from Favorites</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-left">
+              Are you sure you want to remove the selected items from favorites?
+              {selectedIds.size > 0 && (
+                <span className="block mt-2 text-sm font-medium">
+                  {selectedIds.size} item{selectedIds.size > 1 ? "s" : ""} will
+                  be removed.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <button
+              onClick={() => setShowRemoveFavoritesDialog(false)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            >
+              Cancel
+            </button>
+            <AlertDialogAction
+              onClick={confirmRemoveFromFavorites}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              Remove from Favorites
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

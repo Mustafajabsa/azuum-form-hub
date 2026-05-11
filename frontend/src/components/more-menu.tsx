@@ -12,7 +12,6 @@ import {
   ClipboardPaste,
   ExternalLink,
   Star,
-  Link2,
   Share2,
   Tag,
   Download,
@@ -44,7 +43,13 @@ interface Props {
   onCompress: () => void;
   onSelectAll: () => void;
   onShare: (type: "external" | "internal") => void;
+  onAddToFavorites: () => void;
+  onRemoveFromFavorites?: () => void;
   items?: any[];
+  isTrashView?: boolean;
+  isFavoritesView?: boolean;
+  onEmptyTrash?: () => void;
+  onRestore?: () => void;
 }
 
 export function MoreMenu({
@@ -58,7 +63,14 @@ export function MoreMenu({
   onPaste,
   canPaste,
   onCompress,
+  onSelectAll,
   onShare,
+  onAddToFavorites,
+  onRemoveFromFavorites,
+  isTrashView,
+  isFavoritesView,
+  onEmptyTrash,
+  onRestore,
 }: Props) {
   return (
     <DropdownMenu>
@@ -75,92 +87,124 @@ export function MoreMenu({
         align="start"
         className="w-60 max-h-48 overflow-y-auto"
       >
-        <DropdownMenuLabel>View</DropdownMenuLabel>
-        <DropdownMenuItem>
-          <Eye />
-          <span>Show hidden files</span>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={selectedIds.size === 0}>
-            <Share2 />
-            <span>Share</span>
-            <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={() => onShare("external")}>
-              <ExternalLink />
-              <span>External</span>
+        {isTrashView ? (
+          <>
+            <DropdownMenuLabel>Trash Actions</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={onDelete}
+              disabled={selectedIds.size === 0}
+            >
+              <Trash2 />
+              <span>Delete Permanently</span>
+              <DropdownMenuShortcut>Delete</DropdownMenuShortcut>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onShare("internal")}>
+            <DropdownMenuItem
+              onClick={onRestore}
+              disabled={selectedIds.size === 0}
+            >
               <HardDrive />
-              <span>Internal</span>
+              <span>Restore</span>
+              <DropdownMenuShortcut>⌘R</DropdownMenuShortcut>
             </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuItem onClick={onDelete} disabled={selectedIds.size === 0}>
-          <Trash2 />
-          <span>Delete</span>
-          <DropdownMenuShortcut>Delete</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onRename} disabled={selectedIds.size !== 1}>
-          <Pencil />
-          <span>Rename</span>
-          <DropdownMenuShortcut>F2</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={onCompress}
-          disabled={selectedIds.size === 0}
-        >
-          <FileArchive />
-          <span>Compress to .zip</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="text-destructive focus:text-destructive"
-          onClick={onMoveToTrash}
-          disabled={selectedIds.size === 0}
-        >
-          <Trash2 />
-          <span>Move to Trash</span>
-          <DropdownMenuShortcut>⌫</DropdownMenuShortcut>
-        </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={onEmptyTrash}
+            >
+              <Trash2 />
+              <span>Empty Trash</span>
+              <DropdownMenuShortcut>⌘⌫</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </>
+        ) : isFavoritesView ? (
+          <>
+            <DropdownMenuLabel>Favorites Actions</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={onRemoveFromFavorites}
+              disabled={selectedIds.size === 0}
+            >
+              <Star />
+              <span>Remove from Favorites</span>
+              <DropdownMenuShortcut>⌘⌫</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <>
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => onShare("external")}
+              disabled={selectedIds.size === 0}
+            >
+              <Share2 />
+              <span>Share</span>
+              <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={onDelete}
+              disabled={selectedIds.size === 0}
+            >
+              <Trash2 />
+              <span>Delete</span>
+              <DropdownMenuShortcut>Delete</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={onRename}
+              disabled={selectedIds.size !== 1}
+            >
+              <Pencil />
+              <span>Rename</span>
+              <DropdownMenuShortcut>F2</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={onCompress}
+              disabled={selectedIds.size === 0}
+            >
+              <FileArchive />
+              <span>Compress to .zip</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={onMoveToTrash}
+              disabled={selectedIds.size === 0}
+            >
+              <Trash2 />
+              <span>Move to Trash</span>
+              <DropdownMenuShortcut>⌫</DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Clipboard</DropdownMenuLabel>
-        <DropdownMenuItem onClick={onCopy} disabled={selectedIds.size === 0}>
-          <Copy />
-          <span>Copy</span>
-          <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCut} disabled={selectedIds.size === 0}>
-          <Scissors />
-          <span>Cut</span>
-          <DropdownMenuShortcut>⌘X</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onPaste} disabled={!canPaste}>
-          <ClipboardPaste />
-          <span>Paste</span>
-          <DropdownMenuShortcut>⌘V</DropdownMenuShortcut>
-        </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Clipboard</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={onCopy}
+              disabled={selectedIds.size === 0}
+            >
+              <Copy />
+              <span>Copy</span>
+              <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onCut} disabled={selectedIds.size === 0}>
+              <Scissors />
+              <span>Cut</span>
+              <DropdownMenuShortcut>⌘X</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onPaste} disabled={!canPaste}>
+              <ClipboardPaste />
+              <span>Paste</span>
+              <DropdownMenuShortcut>⌘V</DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Folder</DropdownMenuLabel>
-        <DropdownMenuItem>
-          <ExternalLink />
-          <span>Open in new window</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Star />
-          <span>Add to Favorites</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Link2 />
-          <span>Copy path</span>
-        </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>File/Folder</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={onAddToFavorites}
+              disabled={selectedIds.size === 0}
+            >
+              <Star />
+              <span>Add to Favorites</span>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

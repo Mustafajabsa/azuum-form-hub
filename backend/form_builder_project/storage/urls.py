@@ -26,6 +26,11 @@ from .views import (
     MixedMoveAPIView,
     FileCompressAPIView,
     MixedShareAPIView,
+    SharedItemsListAPIView,
+    TrashAPIView,
+    TrashRestoreAPIView,
+    TrashDeleteAPIView,
+    FavoritesAPIView,
 )
 
 router = DefaultRouter()
@@ -38,7 +43,7 @@ urlpatterns = [
     path('files/', FileManagerAPIView.as_view(), name='file-list'),
     path('files/delete/<path:file_path>/', FileDeleteAPIView.as_view(), name='file-delete'),
     path('files/download/<path:file_path>/', FileDownloadAPIView.as_view(), name='file-download'),
-    path('files/view/<str:file_path>/', FileViewAPIView.as_view(), name='file-view'),
+    path('files/view/<path:file_path>/', FileViewAPIView.as_view(), name='file-view'),
     path('folders/create/', FolderCreateAPIView.as_view(), name='folder-create'),
     path('folders/upload/', FolderUploadAPIView.as_view(), name='folder-upload'),
     path('files/move/', FileMoveAPIView.as_view(), name='file-move'),
@@ -57,7 +62,11 @@ urlpatterns = [
     path('files/mixed-move/', MixedMoveAPIView.as_view(), name='mixed-move'),
     path('files/compress/', FileCompressAPIView.as_view(), name='file-compress'),
     path('files/mixed-share/', MixedShareAPIView.as_view(), name='mixed-share'),
-
+    path('files/shared-items/', SharedItemsListAPIView.as_view(), name='shared-items-list'),
+    path('files/trash/',         TrashAPIView.as_view(),       name='trash'),
+    path('files/trash/restore/', TrashRestoreAPIView.as_view(), name='trash-restore'),
+    path('files/trash/delete/',  TrashDeleteAPIView.as_view(),  name='trash-delete'),
+    path('files/favorites/', FavoritesAPIView.as_view(), name='favorites'),
     # FileInfo metadata management
     path('fileinfo/', FileInfoListCreateAPIView.as_view(), name='fileinfo-list'),
     path('fileinfo/<int:pk>/', FileInfoDetailView.as_view(), name='fileinfo-detail'),

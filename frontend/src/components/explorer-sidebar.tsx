@@ -162,12 +162,12 @@ export function ExplorerSidebar({ currentId, onNavigate }: Props) {
 
   const quickLinks = [
     { id: "root", label: "Home", Icon: HardDrive },
-    { id: "documents", label: "Documents", Icon: Star },
-    { id: "downloads", label: "Recents", Icon: Clock },
+    { id: "favorites", label: "Favorites", Icon: Star },
+    { id: "trash", label: "Trash", Icon: Trash2 },
   ];
 
   return (
-    <aside className="flex h-full w-44 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <HardDrive size={16} />
@@ -194,70 +194,15 @@ export function ExplorerSidebar({ currentId, onNavigate }: Props) {
             </button>
           ))}
 
-          {/* Share section with toggle */}
-          <div>
-            <button
-              onClick={() => toggle("share")}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
-                (currentId === "shared-received" ||
-                  currentId === "shared-sent") &&
-                  "bg-sidebar-accent font-medium",
-              )}
-            >
-              <ChevronRight
-                size={12}
-                className={cn(
-                  "transition-transform",
-                  expanded.has("share") && "rotate-90",
-                )}
-              />
-              <Share2 size={15} className="text-muted-foreground" />
-              Share
-            </button>
-
-            {expanded.has("share") && (
-              <div className="ml-4">
-                <button
-                  onClick={() => onNavigate("shared-received")}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
-                    currentId === "shared-received" &&
-                      "bg-sidebar-accent font-medium",
-                  )}
-                >
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                  Received
-                </button>
-                <button
-                  onClick={() => onNavigate("shared-sent")}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
-                    currentId === "shared-sent" &&
-                      "bg-sidebar-accent font-medium",
-                  )}
-                >
-                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                  Sent
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="mb-3">
-          <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Locations
-          </div>
           <button
-            onClick={() => onNavigate("trash")}
+            onClick={() => onNavigate("shared-sent")}
             className={cn(
               "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
-              currentId === "trash" && "bg-sidebar-accent font-medium",
+              currentId === "shared-sent" && "bg-sidebar-accent font-medium",
             )}
           >
-            <Trash2 size={15} className="text-muted-foreground" />
-            Trash
+            <Share2 size={15} className="text-muted-foreground" />
+            Shared
           </button>
         </div>
 

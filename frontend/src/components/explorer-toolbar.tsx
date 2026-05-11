@@ -43,7 +43,11 @@ interface Props {
   onCompress: () => void;
   onSelectAll: () => void;
   onShare: () => void;
+  onAddToFavorites: () => void;
+  onRemoveFromFavorites?: () => void;
   items: any[];
+  onEmptyTrash?: () => void;
+  onRestore?: () => void;
 }
 
 export function ExplorerToolbar({
@@ -77,7 +81,11 @@ export function ExplorerToolbar({
   onCompress,
   onSelectAll,
   onShare,
+  onAddToFavorites,
+  onRemoveFromFavorites,
   items,
+  onEmptyTrash,
+  onRestore,
 }: Props) {
   // Determine if up button should be enabled (not at root)
   const canGoUp = currentId !== "root" && currentId !== "";
@@ -144,81 +152,159 @@ export function ExplorerToolbar({
           )}
         </nav>
 
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search files..."
-            className="h-8 w-56 rounded-md border border-border bg-card pl-8 pr-3 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/40"
-          />
-        </div>
+        {currentId !== "shared-sent" && (
+          <>
+            <div className="relative">
+              <Search
+                size={14}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search files..."
+                className="h-8 w-56 rounded-md border border-border bg-card pl-8 pr-3 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/40"
+              />
+            </div>
 
-        <div className="flex items-center gap-2">
-          <select
-            value={sortBy}
-            onChange={(e) => onSortChange(e.target.value)}
-            className="h-8 rounded-md border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
-          >
-            <option value="">Sort by</option>
-            <option value="name">Name</option>
-            <option value="size">Size</option>
-            <option value="created">Created</option>
-            <option value="modified">Modified</option>
-          </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => onSortChange(e.target.value)}
+                className="h-8 rounded-md border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
+              >
+                <option value="">Sort by</option>
+                <option value="name">Name</option>
+                <option value="size">Size</option>
+                <option value="created">Created</option>
+                <option value="modified">Modified</option>
+              </select>
 
-          <select
-            value={sortOrder}
-            onChange={(e) => onSortOrderChange(e.target.value)}
-            className="h-8 rounded-md border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
-            disabled={!sortBy}
-          >
-            <option value="asc">A-Z</option>
-            <option value="desc">Z-A</option>
-          </select>
-        </div>
+              <select
+                value={sortOrder}
+                onChange={(e) => onSortOrderChange(e.target.value)}
+                className="h-8 rounded-md border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
+                disabled={!sortBy}
+              >
+                <option value="asc">A-Z</option>
+                <option value="desc">Z-A</option>
+              </select>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex h-11 items-center justify-between border-t border-border px-4">
-        <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
-          <ActionBtn
-            icon={FolderPlus}
-            label="New Folder"
-            onClick={onNewFolder}
-          />
-          <ActionBtn icon={Upload} label="Upload" onClick={onUpload} />
-          <button
-            onClick={handleSelectAll}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-              areAllItemsSelected ? "bg-accent text-foreground" : "",
+        {currentId !== "shared-sent" && (
+          <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
+            {currentId === "trash" ? (
+              <>
+                <button
+                  onClick={handleSelectAll}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                    areAllItemsSelected ? "bg-accent text-foreground" : "",
+                  )}
+                  title={areAllItemsSelected ? "Deselect all" : "Select all"}
+                >
+                  <Check size={14} />
+                  <span className="ml-1">Select all</span>
+                </button>
+                <MoreMenu
+                  selectedIds={selectedIds}
+                  isTrashView={true}
+                  onMoveToTrash={onMoveToTrash}
+                  onDelete={onDelete}
+                  onDownload={onDownload}
+                  onRename={onRename}
+                  onCopy={onCopy}
+                  onCut={onCut}
+                  onPaste={onPaste}
+                  canPaste={canPaste}
+                  onCompress={onCompress}
+                  onSelectAll={handleSelectAll}
+                  onShare={onShare}
+                  onAddToFavorites={onAddToFavorites}
+                  onRemoveFromFavorites={onRemoveFromFavorites}
+                  items={items}
+                  onEmptyTrash={onEmptyTrash}
+                  onRestore={onRestore}
+                />
+              </>
+            ) : currentId === "favorites" ? (
+              <>
+                <button
+                  onClick={handleSelectAll}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                    areAllItemsSelected ? "bg-accent text-foreground" : "",
+                  )}
+                  title={areAllItemsSelected ? "Deselect all" : "Select all"}
+                >
+                  <Check size={14} />
+                  <span className="ml-1">Select all</span>
+                </button>
+                <MoreMenu
+                  selectedIds={selectedIds}
+                  isFavoritesView={true}
+                  onMoveToTrash={onMoveToTrash}
+                  onDelete={onDelete}
+                  onDownload={onDownload}
+                  onRename={onRename}
+                  onCopy={onCopy}
+                  onCut={onCut}
+                  onPaste={onPaste}
+                  canPaste={canPaste}
+                  onCompress={onCompress}
+                  onSelectAll={handleSelectAll}
+                  onShare={onShare}
+                  onAddToFavorites={onAddToFavorites}
+                  onRemoveFromFavorites={onRemoveFromFavorites}
+                  items={items}
+                />
+              </>
+            ) : (
+              <>
+                <ActionBtn
+                  icon={FolderPlus}
+                  label="New Folder"
+                  onClick={onNewFolder}
+                />
+                <ActionBtn icon={Upload} label="Upload" onClick={onUpload} />
+                <button
+                  onClick={handleSelectAll}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                    areAllItemsSelected ? "bg-accent text-foreground" : "",
+                  )}
+                  title={areAllItemsSelected ? "Deselect all" : "Select all"}
+                >
+                  <Check size={14} />
+                  <span className="ml-1">Select all</span>
+                </button>
+                <MoreMenu
+                  selectedIds={selectedIds}
+                  onMoveToTrash={onMoveToTrash}
+                  onDelete={onDelete}
+                  onDownload={onDownload}
+                  onRename={onRename}
+                  onCopy={onCopy}
+                  onCut={onCut}
+                  onPaste={onPaste}
+                  canPaste={canPaste}
+                  onCompress={onCompress}
+                  onSelectAll={handleSelectAll}
+                  onShare={onShare}
+                  onAddToFavorites={onAddToFavorites}
+                  onRemoveFromFavorites={onRemoveFromFavorites}
+                  items={items}
+                />
+              </>
             )}
-            title={areAllItemsSelected ? "Deselect all" : "Select all"}
-          >
-            <Check size={14} />
-            <span className="ml-1">Select all</span>
-          </button>
-          <MoreMenu
-            selectedIds={selectedIds}
-            onMoveToTrash={onMoveToTrash}
-            onDelete={onDelete}
-            onDownload={onDownload}
-            onRename={onRename}
-            onCopy={onCopy}
-            onCut={onCut}
-            onPaste={onPaste}
-            canPaste={canPaste}
-            onCompress={onCompress}
-            onSelectAll={handleSelectAll}
-            onShare={onShare}
-            items={items}
-          />
-        </div>
+          </div>
+        )}
 
-        <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
+        <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 ml-auto">
           <button
             onClick={() => onViewChange("grid")}
             className={cn(

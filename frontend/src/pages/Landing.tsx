@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageCircle, X } from "lucide-react";
+import { MessageCircle, X, Eye, EyeOff, Moon, Sun } from "lucide-react";
 import { ContactForm } from "@/components/ContactForm";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/hooks/use-theme";
 
 const Landing = () => {
   const {
@@ -18,9 +19,12 @@ const Landing = () => {
     loginError,
     registerError,
   } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState("login");
   const [showContact, setShowContact] = useState(false);
   const [hasWebsite, setHasWebsite] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [formData, setFormData] = useState({
     // Shared fields
     username: "",
@@ -140,6 +144,21 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+      {/* Dark Mode Toggle */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={toggleTheme}
+        className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        aria-label="Toggle dark mode"
+      >
+        {theme === "dark" ? (
+          <Sun className="h-5 w-5" />
+        ) : (
+          <Moon className="h-5 w-5" />
+        )}
+      </Button>
+
       <div className="max-w-md w-full space-y-8">
         <div className="space-y-4 text-center">
           <div className="flex justify-center">
@@ -182,16 +201,35 @@ const Landing = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={formData.password}
+                    onChange={(e) =>
+                      setFormData({ ...formData, password: e.target.value })
+                    }
+                    required
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
               {loginError && (
                 <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-md text-sm">
@@ -329,33 +367,71 @@ const Landing = () => {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Create a password"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Create a password"
+                    value={formData.password}
+                    onChange={(e) =>
+                      setFormData({ ...formData, password: e.target.value })
+                    }
+                    required
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="passwordConfirm">Confirm Password</Label>
-                <Input
-                  id="passwordConfirm"
-                  type="password"
-                  placeholder="Confirm your password"
-                  value={formData.passwordConfirm}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      passwordConfirm: e.target.value,
-                    })
-                  }
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="passwordConfirm"
+                    type={showPasswordConfirm ? "text" : "password"}
+                    placeholder="Confirm your password"
+                    value={formData.passwordConfirm}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        passwordConfirm: e.target.value,
+                      })
+                    }
+                    required
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    onClick={() => setShowPasswordConfirm(!showPasswordConfirm)}
+                    aria-label={
+                      showPasswordConfirm ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPasswordConfirm ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {registerError && (

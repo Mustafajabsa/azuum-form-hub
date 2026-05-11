@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from .models import FileInfo, SharedFile
+from .models import FileInfo, SharedFile, TrashedItem,FavoriteItem
 from .serializers import FileInfoSerializer 
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
@@ -132,6 +132,23 @@ class BaseFileAPIView(APIView):
         else:
             return f'{size_bytes / (1024 ** 3):.1f} GB'
 
+    def _get_folder_size(self, folder_path):
+        """Calculate total size of all files in a folder recursively."""
+        total_size = 0
+        try:
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                for filename in filenames:
+                    file_path = os.path.join(dirpath, filename)
+                    try:
+                        total_size += os.path.getsize(file_path)
+                    except (OSError, IOError):
+                        # Skip files that can't be accessed
+                        continue
+        except (OSError, IOError):
+            # Return 0 if folder can't be accessed
+            return 0
+        return total_size
+
 
 """Other classes"""
 
@@ -184,6 +201,9 @@ class FileManagerAPIView(BaseFileAPIView):
         try:
             for name in os.listdir(current_path):
                 if os.path.isdir(os.path.join(current_path, name)):
+                    # Hide .trash directory from listing
+                    if name == '.trash':
+                        continue
                     unique_id = str(uuid.uuid4())
                     nested_path = os.path.join(current_path, name)
                     nested_directories = self.generate_nested_directory(root_path, nested_path)
@@ -619,49 +639,143 @@ class FileDownloadAPIView(BaseFileAPIView):
         )
 
 class FileViewAPIView(BaseFileAPIView):
-    """View a file (for images/PDFs in popup)."""
+    """View a file (for images/PDFs/videos/audio/text in popup)."""
+
+    # complete content type map
+    CONTENT_TYPE_MAP = {
+        # images
+        '.jpg':  'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png':  'image/png',
+        '.gif':  'image/gif',
+        '.bmp':  'image/bmp',
+        '.webp': 'image/webp',
+        '.svg':  'image/svg+xml',
+        '.ico':  'image/x-icon',
+        '.tiff': 'image/tiff',
+
+        # documents
+        '.pdf':  'application/pdf',
+        '.txt':  'text/plain',
+        '.csv':  'text/csv',
+        '.md':   'text/markdown',
+        '.html': 'text/html',
+        '.xml':  'text/xml',
+        '.json': 'application/json',
+
+        # video
+        '.mp4':  'video/mp4',
+        '.webm': 'video/webm',
+        '.ogg':  'video/ogg',
+        '.mov':  'video/quicktime',
+        '.avi':  'video/x-msvideo',
+        '.mkv':  'video/x-matroska',
+        '.m4v':  'video/x-m4v',
+        '.3gp':  'video/3gpp',
+
+        # audio
+        '.mp3':  'audio/mpeg',
+        '.wav':  'audio/wav',
+        '.ogg':  'audio/ogg',
+        '.m4a':  'audio/mp4',
+        '.aac':  'audio/aac',
+        '.flac': 'audio/flac',
+        '.weba': 'audio/webm',
+    }
+
     @extend_schema(
-        summary="View/Preview a file",
-        description="Serves a file for inline viewing in the browser. Detects Content-Type based on file extension.",
+        summary="View or preview a file inline",
+        description="""
+        Serves a file for inline viewing in the browser.
+        Automatically detects the correct content type based on the file extension.
+        
+        **Supported file types:**
+        
+        Images — jpg, jpeg, png, gif, bmp, webp, svg, ico, tiff
+        
+        Documents — pdf, txt, csv, md, html, xml, json
+        
+        Video — mp4, webm, ogg, mov, avi, mkv, m4v, 3gp
+        
+        Audio — mp3, wav, ogg, m4a, aac, flac, weba
+        
+        Any other file type is served as a binary download fallback.
+        
+        **How the browser handles each type:**
+        - Images → rendered inline
+        - PDF → opened in browser PDF viewer
+        - Text/CSV/JSON/MD → displayed as plain text
+        - Video → played in browser video player
+        - Audio → played in browser audio player
+        - Other → downloaded automatically
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='file_path',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description='Path to the file using %slash% as folder separator.',
+                required=True,
+                examples=[
+                    OpenApiExample('Image',    value='photos%slash%vacation.jpg'),
+                    OpenApiExample('PDF',      value='reports%slash%annual.pdf'),
+                    OpenApiExample('Video',    value='videos%slash%demo.mp4'),
+                    OpenApiExample('Audio',    value='music%slash%song.mp3'),
+                    OpenApiExample('Document', value='docs%slash%readme.txt'),
+                ]
+            )
+        ],
         responses={
-            200: OpenApiResponse(description="File content for inline display"),
-            404: OpenApiResponse(description="File not found")
+            200: OpenApiResponse(description="File content served with correct content type"),
+            404: OpenApiResponse(description="File not found"),
+            400: OpenApiResponse(description="Error serving file")
         }
     )
-    
     def get(self, request, file_path):
-        """Serve file content for viewing."""
-        from django.http import FileResponse
-        path = file_path.replace('%slash%', '/')
-        media_path = self.get_user_media_path(request)
+        """Serve file content for inline viewing."""
+        path               = file_path.replace('%slash%', os.sep)\
+                                       .replace('%2F', os.sep)\
+                                       .replace('%5C', os.sep)
+        path               = self.sanitize_path(path)
+
+        if not path:
+            return Response(
+                {'error': 'Invalid path provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        media_path         = self.get_user_media_path(request)
         absolute_file_path = os.path.join(media_path, path)
-        
-        if os.path.exists(absolute_file_path):
-            try:
-                # Determine content type based on file extension
-                _, ext = os.path.splitext(absolute_file_path)
-                ext = ext.lower()
-                
-                content_type = "application/octet-stream"  # default
-                if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
-                    content_type = f"image/{ext[1:]}"
-                elif ext == '.pdf':
-                    content_type = "application/pdf"
-                elif ext == '.txt':
-                    content_type = "text/plain"
-                
-                fh = open(absolute_file_path, 'rb')
-                response = FileResponse(fh, content_type=content_type)
-                return response
-            except Exception as e:
-                return Response(
-                    {'error': str(e)},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        return Response(
-            {'error': 'File not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
+
+        if not os.path.exists(absolute_file_path):
+            return Response(
+                {'error': 'File not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not os.path.isfile(absolute_file_path):
+            return Response(
+                {'error': 'Path is a directory — only files can be viewed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            _, ext       = os.path.splitext(absolute_file_path)
+            ext          = ext.lower()
+            content_type = self.CONTENT_TYPE_MAP.get(ext, 'application/octet-stream')
+
+            fh       = open(absolute_file_path, 'rb')
+            response = FileResponse(fh, content_type=content_type)
+
+            # no Content-Disposition header → browser renders inline
+            # if unsupported type → browser downloads automatically
+            return response
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class FileInfoDetailView(BaseFileAPIView):
     """Retrieve, update or delete a FileInfo record."""
@@ -3482,4 +3596,905 @@ class MixedShareAPIView(BaseFileAPIView):
                 'failed':  failed
             },
             status=status.HTTP_201_CREATED
+        )
+
+class SharedItemsListAPIView(BaseFileAPIView):
+    """List all active shared items for the logged in user."""
+
+    @extend_schema(
+        summary="List all shared items",
+        description="""
+        Returns all active share links created by the logged in user.
+        
+        **Filtering options:**
+        - type=file     → only show shared files
+        - type=folder   → only show shared folders
+        - status=active → only show valid, non-expired links (default)
+        - status=all    → show everything including expired and revoked
+        
+        **Example:**
+        GET /api/files/shared-items/
+    GET /api/files/shared-items/?type=file
+    GET /api/files/shared-items/?type=folder
+    GET /api/files/shared-items/?status=all
+    GET /api/files/shared-items/?type=file&status=active
+    """,
+        parameters=[
+            OpenApiParameter(
+                name='type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by item type. Leave empty to return all.',
+                required=False,
+                enum=['file', 'folder'],
+                examples=[
+                    OpenApiExample('Files only',   value='file'),
+                    OpenApiExample('Folders only', value='folder'),
+                ]
+            ),
+            OpenApiParameter(
+                name='status',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by link status. Defaults to active.',
+                required=False,
+                enum=['active', 'all'],
+                examples=[
+                    OpenApiExample('Active only', value='active'),
+                    OpenApiExample('All',         value='all'),
+                ]
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description="Shared items returned successfully",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'total': {
+                            'type': 'integer',
+                            'description': 'Total number of shared items returned',
+                            'example': 3
+                        },
+                        'items': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'token':        {'type': 'string',  'example': 'uuid'},
+                                    'share_url':    {'type': 'string',  'example': 'http://yourdomain.com/api/files/shared/uuid/'},
+                                    'file_path':    {'type': 'string',  'example': 'invoices/2024/sales.csv'},
+                                    'type':         {'type': 'string',  'example': 'file'},
+                                    'is_viewable':  {'type': 'boolean', 'example': True},
+                                    'is_active':    {'type': 'boolean', 'example': True},
+                                    'access_count': {'type': 'integer', 'example': 3},
+                                    'max_access':   {'type': 'integer', 'example': 5, 'nullable': True},
+                                    'expires_at':   {'type': 'string',  'example': '2024-01-16T10:30:00Z', 'nullable': True},
+                                    'created_at':   {'type': 'string',  'example': '2024-01-15T10:30:00Z'},
+                                    'is_expired':   {'type': 'boolean', 'example': False},
+                                    'accesses_remaining': {'type': 'integer', 'example': 2, 'nullable': True}
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    )
+    def get(self, request):
+        """Get all shared items for the logged in user."""
+        item_type   = request.query_params.get('type', '')
+        show_status = request.query_params.get('status', 'active')
+
+        # base queryset — only the logged in user's shares
+        queryset = SharedFile.objects.filter(created_by=request.user)
+
+        # filter by type if provided
+        if item_type in ['file', 'folder']:
+            queryset = queryset.filter(item_type=item_type)
+
+        # filter by status
+        if show_status == 'active':
+            queryset = queryset.filter(is_active=True)
+
+        # order by most recently created
+        queryset = queryset.order_by('-id')
+
+        items = []
+        for share in queryset:
+
+            # check if expired
+            is_expired = (
+                share.expires_at is not None and
+                timezone.now() > share.expires_at
+            )
+
+            # calculate remaining accesses
+            accesses_remaining = None
+            if share.max_access is not None:
+                accesses_remaining = max(0, share.max_access - share.access_count)
+
+            share_url = request.build_absolute_uri(
+                f'/api/files/shared/{share.token}/'
+            )
+
+            items.append({
+                'token':              str(share.token),
+                'share_url':          share_url,
+                'file_path':          share.file_path,
+                'type':               share.item_type,
+                'is_viewable':        share.is_viewable,
+                'is_active':          share.is_active,
+                'access_count':       share.access_count,
+                'max_access':         share.max_access,
+                'accesses_remaining': accesses_remaining,
+                'expires_at':         share.expires_at,
+                'is_expired':         is_expired,
+                'created_at':         share.created_at if hasattr(share, 'created_at') else None
+            })
+
+        return Response({
+            'total': len(items),
+            'items': items
+        })
+
+class TrashAPIView(BaseFileAPIView):
+    """Move items to trash, list trash, and empty trash."""
+
+    def get_user_trash_path(self, request):
+        """Build and return the user's trash folder path."""
+        trash_folder = os.path.join(
+            self.get_user_media_path(request),
+            '.trash'
+        )
+        os.makedirs(trash_folder, exist_ok=True)
+        return trash_folder
+
+    def calculate_size(self, absolute_path):
+        """Calculate size of a file or folder."""
+        if os.path.isfile(absolute_path):
+            return os.path.getsize(absolute_path)
+        total = 0
+        for dirpath, dirnames, filenames in os.walk(absolute_path):
+            for filename in filenames:
+                total += os.path.getsize(os.path.join(dirpath, filename))
+        return total
+
+    @extend_schema(
+        summary="List all trashed items",
+        description="""
+        Returns all items currently in the user's trash.
+        
+        **Example response:**
+    ```json
+        {
+            "total": 2,
+            "total_size_readable": "1.2 MB",
+            "items": [
+                {
+                    "id": 1,
+                    "item_name": "sales.csv",
+                    "original_path": "invoices/2024/sales.csv",
+                    "type": "file",
+                    "size_readable": "200.0 KB",
+                    "trashed_at": "2024-01-15 10:30:00"
+                }
+            ]
+        }
+    ```
+        """,
+        responses={
+            200: OpenApiResponse(
+                description="Trashed items returned successfully",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'total': {
+                            'type': 'integer',
+                            'example': 2
+                        },
+                        'total_size_readable': {
+                            'type': 'string',
+                            'example': '1.2 MB'
+                        },
+                        'items': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'id':            {'type': 'integer', 'example': 1},
+                                    'item_name':     {'type': 'string',  'example': 'sales.csv'},
+                                    'original_path': {'type': 'string',  'example': 'invoices/2024/sales.csv'},
+                                    'type':          {'type': 'string',  'example': 'file'},
+                                    'size_bytes':    {'type': 'integer', 'example': 204800},
+                                    'size_readable': {'type': 'string',  'example': '200.0 KB'},
+                                    'trashed_at':    {'type': 'string',  'example': '2024-01-15 10:30:00'}
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    )
+    def get(self, request):
+        """List all trashed items."""
+        trashed_items = TrashedItem.objects.filter(user=request.user)
+        total_size    = sum(item.size_bytes for item in trashed_items)
+
+        items = [
+            {
+                'id':            item.id,
+                'item_name':     item.item_name,
+                'original_path': item.original_path,
+                'trash_path':    item.trash_path,
+                'type':          item.item_type,
+                'size_bytes':    item.size_bytes,
+                'size_readable': self.get_readable_size(item.size_bytes),
+                'trashed_at':    str(item.trashed_at)
+            }
+            for item in trashed_items
+        ]
+
+        return Response({
+            'total':              len(items),
+            'total_size_bytes':   total_size,
+            'total_size_readable': self.get_readable_size(total_size),
+            'items':              items
+        })
+
+    @extend_schema(
+        summary="Move items to trash",
+        description="""
+        Moves multiple files and folders to the trash.
+        Items can be restored later or permanently deleted.
+        
+        **Example:**
+    ```json
+        {
+            "paths": [
+                "invoices/2024/sales.csv",
+                "reports/"
+            ]
+        }
+    ```
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'paths': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of relative paths to move to trash.',
+                        'example': ['invoices/2024/sales.csv', 'reports/']
+                    }
+                },
+                'required': ['paths']
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description="Items moved to trash",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message':  {'type': 'string', 'example': '2 item(s) moved to trash, 0 failed'},
+                        'trashed':  {'type': 'array', 'items': {'type': 'string'}},
+                        'failed':   {'type': 'array', 'items': {'type': 'object'}}
+                    }
+                }
+            ),
+            400: OpenApiResponse(description="Missing or invalid paths")
+        }
+    )
+    def post(self, request):
+        """Move items to trash."""
+        media_path = self.get_user_media_path(request)
+        trash_path = self.get_user_trash_path(request)
+        paths      = request.data.get('paths')
+
+        if not paths:
+            return Response(
+                {'error': 'paths is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        paths = [self.sanitize_path(p) for p in paths]
+        paths = [p for p in paths if p is not None]
+
+        if not paths:
+            return Response(
+                {'error': 'No valid paths provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        trashed = []
+        failed  = []
+
+        for path in paths:
+            absolute_source = os.path.join(media_path, path)
+
+            try:
+                if not os.path.exists(absolute_source):
+                    failed.append({'path': path, 'error': 'File or folder not found'})
+                    continue
+
+                # determine type and size
+                item_type  = 'file' if os.path.isfile(absolute_source) else 'folder'
+                item_name  = os.path.basename(absolute_source.rstrip(os.sep))
+                size_bytes = self.calculate_size(absolute_source)
+
+                # build destination path inside trash
+                absolute_trash_destination = os.path.join(trash_path, path)
+
+                # create parent folders inside trash if needed
+                os.makedirs(
+                    os.path.dirname(absolute_trash_destination)
+                    if item_type == 'file'
+                    else os.path.dirname(absolute_trash_destination.rstrip(os.sep)),
+                    exist_ok=True
+                )
+
+                # if something already exists in trash at this path — remove it first
+                if os.path.exists(absolute_trash_destination):
+                    if os.path.isfile(absolute_trash_destination):
+                        os.remove(absolute_trash_destination)
+                    else:
+                        shutil.rmtree(absolute_trash_destination)
+
+                    # also remove the old database record
+                    TrashedItem.objects.filter(
+                        user=request.user,
+                        original_path=path
+                    ).delete()
+
+                # move to trash
+                shutil.move(absolute_source, absolute_trash_destination)
+
+                # create database record
+                TrashedItem.objects.create(
+                    user          = request.user,
+                    original_path = path,
+                    trash_path    = path,   # relative to .trash folder
+                    item_type     = item_type,
+                    item_name     = item_name,
+                    size_bytes    = size_bytes
+                )
+
+                trashed.append(path)
+
+            except Exception as e:
+                failed.append({'path': path, 'error': str(e)})
+
+        return Response(
+            {
+                'message': f'{len(trashed)} item(s) moved to trash, {len(failed)} failed',
+                'trashed': trashed,
+                'failed':  failed
+            },
+            status=status.HTTP_200_OK if trashed else status.HTTP_400_BAD_REQUEST
+        )
+
+    @extend_schema(
+        summary="Empty trash",
+        description="Permanently deletes everything in the user's trash. This action cannot be undone.",
+        responses={
+            200: OpenApiResponse(description="Trash emptied successfully"),
+            400: OpenApiResponse(description="Error emptying trash")
+        }
+    )
+    def delete(self, request):
+        """Empty trash — permanently delete everything."""
+        trash_path = self.get_user_trash_path(request)
+
+        try:
+            # delete all files inside trash folder
+            for item in os.listdir(trash_path):
+                item_path = os.path.join(trash_path, item)
+                if os.path.isfile(item_path):
+                    os.remove(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+
+            # delete all database records
+            deleted_count = TrashedItem.objects.filter(user=request.user).delete()[0]
+
+            return Response({
+                'message': f'Trash emptied successfully. {deleted_count} item(s) permanently deleted.'
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class TrashRestoreAPIView(BaseFileAPIView):
+    """Restore items from trash."""
+
+    @extend_schema(
+        summary="Restore items from trash",
+        description="""
+        Restores one or more items from trash back to their original locations.
+        If the original location no longer exists it will be recreated automatically.
+        If a file with the same name already exists at the original location,
+        a timestamp is appended to the restored filename to avoid overwriting.
+        
+        **Example:**
+    ```json
+        {
+            "ids": [1, 2, 3]
+        }
+    ```
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'ids': {
+                        'type': 'array',
+                        'items': {'type': 'integer'},
+                        'description': 'List of TrashedItem IDs to restore.',
+                        'example': [1, 2, 3]
+                    }
+                },
+                'required': ['ids']
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description="Items restored successfully",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message':  {'type': 'string', 'example': '2 item(s) restored, 0 failed'},
+                        'restored': {'type': 'array', 'items': {'type': 'string'}},
+                        'failed':   {'type': 'array', 'items': {'type': 'object'}}
+                    }
+                }
+            ),
+            400: OpenApiResponse(description="Missing or invalid IDs")
+        }
+    )
+    def post(self, request):
+        """Restore items from trash."""
+        media_path = self.get_user_media_path(request)
+        trash_path = os.path.join(media_path, '.trash')
+        ids        = request.data.get('ids')
+
+        if not ids:
+            return Response(
+                {'error': 'ids is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        restored = []
+        failed   = []
+
+        for item_id in ids:
+            try:
+                # get the trashed item record — must belong to this user
+                trashed_item = TrashedItem.objects.get(
+                    id   = item_id,
+                    user = request.user
+                )
+
+                absolute_trash_source      = os.path.join(trash_path, trashed_item.trash_path)
+                absolute_restore_destination = os.path.join(media_path, trashed_item.original_path)
+
+                # check the file still exists in trash
+                if not os.path.exists(absolute_trash_source):
+                    failed.append({
+                        'id':    item_id,
+                        'error': 'Item no longer exists in trash'
+                    })
+                    trashed_item.delete()
+                    continue
+
+                # recreate parent folders at original location if needed
+                parent_dir = os.path.dirname(absolute_restore_destination)
+                os.makedirs(parent_dir, exist_ok=True)
+
+                # handle name conflict at original location
+                if os.path.exists(absolute_restore_destination):
+                    name, ext = os.path.splitext(trashed_item.item_name)
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    new_name  = f'{name}_restored_{timestamp}{ext}'
+                    absolute_restore_destination = os.path.join(parent_dir, new_name)
+
+                # move back to original location
+                shutil.move(absolute_trash_source, absolute_restore_destination)
+
+                # delete the database record
+                trashed_item.delete()
+
+                restored.append(trashed_item.original_path)
+
+            except TrashedItem.DoesNotExist:
+                failed.append({'id': item_id, 'error': 'Trashed item not found'})
+            except Exception as e:
+                failed.append({'id': item_id, 'error': str(e)})
+
+        return Response(
+            {
+                'message':  f'{len(restored)} item(s) restored, {len(failed)} failed',
+                'restored': restored,
+                'failed':   failed
+            },
+            status=status.HTTP_200_OK if restored else status.HTTP_400_BAD_REQUEST
+        )
+
+class TrashDeleteAPIView(BaseFileAPIView):
+    """Permanently delete specific items from trash."""
+
+    @extend_schema(
+        summary="Permanently delete specific items from trash",
+        description="""
+        Permanently deletes specific items from trash by their IDs.
+        This action cannot be undone.
+        
+        **Example:**
+    ```json
+        {
+            "ids": [1, 2, 3]
+        }
+    ```
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'ids': {
+                        'type': 'array',
+                        'items': {'type': 'integer'},
+                        'description': 'List of TrashedItem IDs to permanently delete.',
+                        'example': [1, 2, 3]
+                    }
+                },
+                'required': ['ids']
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description="Items permanently deleted",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {'type': 'string', 'example': '2 item(s) permanently deleted, 0 failed'},
+                        'deleted': {'type': 'array', 'items': {'type': 'string'}},
+                        'failed':  {'type': 'array', 'items': {'type': 'object'}}
+                    }
+                }
+            ),
+            400: OpenApiResponse(description="Missing or invalid IDs")
+        }
+    )
+    def delete(self, request):
+        """Permanently delete specific items from trash."""
+        media_path = self.get_user_media_path(request)
+        trash_path = os.path.join(media_path, '.trash')
+        ids        = request.data.get('ids')
+
+        if not ids:
+            return Response(
+                {'error': 'ids is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        deleted = []
+        failed  = []
+
+        for item_id in ids:
+            try:
+                trashed_item          = TrashedItem.objects.get(
+                    id   = item_id,
+                    user = request.user
+                )
+                absolute_trash_source = os.path.join(trash_path, trashed_item.trash_path)
+
+                # delete from disk
+                if os.path.exists(absolute_trash_source):
+                    if os.path.isfile(absolute_trash_source):
+                        os.remove(absolute_trash_source)
+                    else:
+                        shutil.rmtree(absolute_trash_source)
+
+                # delete database record
+                item_name = trashed_item.item_name
+                trashed_item.delete()
+                deleted.append(item_name)
+
+            except TrashedItem.DoesNotExist:
+                failed.append({'id': item_id, 'error': 'Trashed item not found'})
+            except Exception as e:
+                failed.append({'id': item_id, 'error': str(e)})
+
+        return Response(
+            {
+                'message': f'{len(deleted)} item(s) permanently deleted, {len(failed)} failed',
+                'deleted': deleted,
+                'failed':  failed
+            },
+            status=status.HTTP_200_OK if deleted else status.HTTP_400_BAD_REQUEST
+        )
+
+class FavoritesAPIView(BaseFileAPIView):
+    """Add, remove, and list favorite files and folders."""
+
+    @extend_schema(
+        summary="List all favorites",
+        description="""
+        Returns all favorited files and folders for the logged in user.
+        Also checks if each item still exists on disk.
+        
+        **Example response:**
+    ```json
+        {
+            "total": 2,
+            "items": [
+                {
+                    "id": 1,
+                    "path": "invoices/2024/sales.csv",
+                    "item_name": "sales.csv",
+                    "type": "file",
+                    "exists": true,
+                    "added_at": "2024-01-15 10:30:00"
+                }
+            ]
+        }
+    ```
+        """,
+        responses={
+            200: OpenApiResponse(
+                description="Favorites returned successfully",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'total': {'type': 'integer', 'example': 2},
+                        'items': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'id':        {'type': 'integer', 'example': 1},
+                                    'path':      {'type': 'string',  'example': 'invoices/2024/sales.csv'},
+                                    'item_name': {'type': 'string',  'example': 'sales.csv'},
+                                    'type':      {'type': 'string',  'example': 'file'},
+                                    'exists':    {'type': 'boolean', 'example': True},
+                                    'added_at':  {'type': 'string',  'example': '2024-01-15 10:30:00'}
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    )
+    def get(self, request):
+        """List all favorites."""
+        media_path = self.get_user_media_path(request)
+        favorites  = FavoriteItem.objects.filter(user=request.user)
+
+        items = []
+        for fav in favorites:
+            absolute_path = os.path.join(media_path, fav.path)
+            
+            # Get file/folder size
+            size_bytes = 0
+            if os.path.exists(absolute_path):
+                if fav.item_type == 'file':
+                    try:
+                        size_bytes = os.path.getsize(absolute_path)
+                    except (OSError, IOError):
+                        size_bytes = 0
+                elif fav.item_type == 'folder':
+                    try:
+                        size_bytes = self._get_folder_size(absolute_path)
+                    except (OSError, IOError):
+                        size_bytes = 0
+            
+            items.append({
+                'id':        fav.id,
+                'path':      fav.path,
+                'item_name': fav.item_name,
+                'type':      fav.item_type,
+                'exists':    os.path.exists(absolute_path),  # check if still on disk
+                'added_at':  str(fav.added_at),
+                'size_bytes': size_bytes
+            })
+
+        return Response({
+            'total': len(items),
+            'items': items
+        })
+
+    @extend_schema(
+        summary="Add items to favorites",
+        description="""
+        Adds one or more files or folders to favorites.
+        Duplicates are ignored — adding an already favorited item does nothing.
+        
+        **Example:**
+    ```json
+        {
+            "paths": [
+                "invoices/2024/sales.csv",
+                "reports/"
+            ]
+        }
+    ```
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'paths': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of relative paths to add to favorites.',
+                        'example': ['invoices/2024/sales.csv', 'reports/']
+                    }
+                },
+                'required': ['paths']
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description="Items added to favorites",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message':  {'type': 'string', 'example': '2 item(s) added to favorites, 0 failed'},
+                        'added':    {'type': 'array', 'items': {'type': 'string'}},
+                        'skipped':  {'type': 'array', 'items': {'type': 'string'},
+                                     'description': 'Already in favorites'},
+                        'failed':   {'type': 'array', 'items': {'type': 'object'}}
+                    }
+                }
+            ),
+            400: OpenApiResponse(description="Missing or invalid paths")
+        }
+    )
+    def post(self, request):
+        """Add items to favorites."""
+        media_path = self.get_user_media_path(request)
+        paths      = request.data.get('paths')
+
+        if not paths:
+            return Response(
+                {'error': 'paths is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        paths = [self.sanitize_path(p) for p in paths]
+        paths = [p for p in paths if p is not None]
+
+        if not paths:
+            return Response(
+                {'error': 'No valid paths provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        added   = []
+        skipped = []
+        failed  = []
+
+        for path in paths:
+            absolute_path = os.path.join(media_path, path)
+
+            try:
+                # check item exists on disk
+                if not os.path.exists(absolute_path):
+                    failed.append({'path': path, 'error': 'File or folder not found'})
+                    continue
+
+                item_name = os.path.basename(absolute_path.rstrip(os.sep))
+                item_type = 'file' if os.path.isfile(absolute_path) else 'folder'
+
+                # get_or_create prevents duplicates
+                favorite, created = FavoriteItem.objects.get_or_create(
+                    user = request.user,
+                    path = path,
+                    defaults = {
+                        'item_name': item_name,
+                        'item_type': item_type
+                    }
+                )
+
+                if created:
+                    added.append(path)
+                else:
+                    skipped.append(path)   # already in favorites
+
+            except Exception as e:
+                failed.append({'path': path, 'error': str(e)})
+
+        return Response(
+            {
+                'message': f'{len(added)} item(s) added to favorites, {len(failed)} failed',
+                'added':   added,
+                'skipped': skipped,
+                'failed':  failed
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        summary="Remove items from favorites",
+        description="""
+        Removes one or more items from favorites by their IDs.
+        The actual files and folders are NOT deleted — only the favorite record is removed.
+        
+        **Example:**
+    ```json
+        {
+            "ids": [1, 2, 3]
+        }
+    ```
+        """,
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'ids': {
+                        'type': 'array',
+                        'items': {'type': 'integer'},
+                        'description': 'List of FavoriteItem IDs to remove.',
+                        'example': [1, 2, 3]
+                    }
+                },
+                'required': ['ids']
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description="Items removed from favorites",
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {'type': 'string', 'example': '2 item(s) removed from favorites, 0 failed'},
+                        'removed': {'type': 'array', 'items': {'type': 'string'}},
+                        'failed':  {'type': 'array', 'items': {'type': 'object'}}
+                    }
+                }
+            ),
+            400: OpenApiResponse(description="Missing or invalid IDs")
+        }
+    )
+    def delete(self, request):
+        """Remove items from favorites."""
+        ids = request.data.get('ids')
+
+        if not ids:
+            return Response(
+                {'error': 'ids is required and cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        removed = []
+        failed  = []
+
+        for item_id in ids:
+            try:
+                favorite = FavoriteItem.objects.get(
+                    id   = item_id,
+                    user = request.user
+                )
+                item_name = favorite.item_name
+                favorite.delete()
+                removed.append(item_name)
+
+            except FavoriteItem.DoesNotExist:
+                failed.append({'id': item_id, 'error': 'Favorite not found'})
+            except Exception as e:
+                failed.append({'id': item_id, 'error': str(e)})
+
+        return Response(
+            {
+                'message': f'{len(removed)} item(s) removed from favorites, {len(failed)} failed',
+                'removed': removed,
+                'failed':  failed
+            },
+            status=status.HTTP_200_OK if removed else status.HTTP_400_BAD_REQUEST
         )
