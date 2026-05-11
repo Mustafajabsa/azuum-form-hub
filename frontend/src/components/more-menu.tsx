@@ -119,6 +119,14 @@ export function MoreMenu({
           <>
             <DropdownMenuLabel>Favorites Actions</DropdownMenuLabel>
             <DropdownMenuItem
+              onClick={onDownload}
+              disabled={selectedIds.size === 0}
+            >
+              <Download />
+              <span>Download</span>
+              <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onClick={onRemoveFromFavorites}
               disabled={selectedIds.size === 0}
             >
@@ -130,6 +138,14 @@ export function MoreMenu({
         ) : (
           <>
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={onDownload}
+              disabled={selectedIds.size === 0}
+            >
+              <Download />
+              <span>Download</span>
+              <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => onShare("external")}
               disabled={selectedIds.size === 0}
