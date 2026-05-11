@@ -1878,7 +1878,7 @@ export default function Storage() {
                   <span>Uploading...</span>
                   <span>{uploadProgress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-muted rounded-full h-2">
                   <div
                     className="bg-primary h-2 rounded-full transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
@@ -2068,7 +2068,7 @@ export default function Storage() {
                     <button className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
                       Dropbox
                     </button>
-                    <button className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors">
+                    <button className="px-3 py-1 text-xs bg-muted-foreground text-background rounded hover:bg-muted transition-colors">
                       OneDrive
                     </button>
                   </div>
@@ -2144,7 +2144,7 @@ export default function Storage() {
                   <span>Creating zip file...</span>
                   <span>{downloadProgress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-muted rounded-full h-2">
                   <div
                     className="bg-primary h-2 rounded-full transition-all duration-300"
                     style={{ width: `${downloadProgress}%` }}
@@ -2162,7 +2162,7 @@ export default function Storage() {
                 value={zipFileName}
                 onChange={(e) => setZipFileName(e.target.value)}
                 placeholder="Enter zip file name"
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground"
                 autoFocus
               />
             )}
@@ -2310,7 +2310,7 @@ export default function Storage() {
             <span className="text-muted-foreground">Progress</span>
             <span className="text-muted-foreground">{downloadProgress}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-1.5">
+          <div className="w-full bg-muted rounded-full h-1.5">
             <div
               className="bg-primary h-1.5 rounded-full transition-all duration-300"
               style={{ width: `${downloadProgress}%` }}
@@ -2335,7 +2335,7 @@ export default function Storage() {
             <span className="text-muted-foreground">Progress</span>
             <span className="text-muted-foreground">{openingProgress}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-1.5">
+          <div className="w-full bg-muted rounded-full h-1.5">
             <div
               className="bg-primary h-1.5 rounded-full transition-all duration-300"
               style={{ width: `${openingProgress}%` }}
@@ -2433,7 +2433,7 @@ export default function Storage() {
           <AlertDialogFooter>
             <button
               onClick={() => setShowRemoveFavoritesDialog(false)}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              className="px-4 py-2 text-sm font-medium bg-muted hover:bg-accent border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
             >
               Cancel
             </button>
