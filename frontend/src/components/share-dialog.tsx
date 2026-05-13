@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -34,6 +35,8 @@ export function ShareDialog({
   const [expiresIn, setExpiresIn] = useState<string>("24");
   const [maxAccess, setMaxAccess] = useState<string>("5");
   const [isViewable, setIsViewable] = useState<boolean>(true);
+  const [hasExpiryLimit, setHasExpiryLimit] = useState<boolean>(true);
+  const [hasAccessLimit, setHasAccessLimit] = useState<boolean>(true);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   const handleShare = () => {
@@ -41,8 +44,10 @@ export function ShareDialog({
   };
 
   const handleConfirmShare = () => {
-    const expires = expiresIn ? parseInt(expiresIn, 10) : undefined;
-    const access = maxAccess ? parseInt(maxAccess, 10) : undefined;
+    const expires =
+      hasExpiryLimit && expiresIn ? parseInt(expiresIn, 10) : undefined;
+    const access =
+      hasAccessLimit && maxAccess ? parseInt(maxAccess, 10) : undefined;
     onShare(expires, access, isViewable);
   };
 
@@ -62,73 +67,97 @@ export function ShareDialog({
                 : "Share Files Externally"}
           </DialogTitle>
           <DialogDescription>
-            {showConfirmation
-              ? `Review the sharing settings for <strong>${
-                  itemCount === 1 ? fileName : `${itemCount} items`
-                }</strong>`
-              : itemCount === 1
-                ? `Configure sharing settings for <strong>${fileName}</strong>`
-                : `Configure sharing settings for <strong>${itemCount} items</strong>`}
+            {showConfirmation ? (
+              <>
+                Review sharing settings for{" "}
+                <strong>
+                  {itemCount === 1 ? fileName : `${itemCount} items`}
+                </strong>
+              </>
+            ) : itemCount === 1 ? (
+              <>
+                Configure sharing settings for <strong>{fileName}</strong>
+              </>
+            ) : (
+              <>
+                Configure sharing settings for{" "}
+                <strong>{itemCount} items</strong>
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         {!showConfirmation ? (
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="expires-in" className="text-right">
-                Expires in (hours)
-              </Label>
-              <Input
-                id="expires-in"
-                type="number"
-                min="1"
-                max="8760" // 1 year max
-                placeholder="24"
-                value={expiresIn}
-                onChange={(e) => setExpiresIn(e.target.value)}
-                className="col-span-3"
-              />
-            </div>
-
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="max-access" className="text-right">
-                Max Access
-              </Label>
-              <Input
-                id="max-access"
-                type="number"
-                min="1"
-                max="1000"
-                placeholder="5"
-                value={maxAccess}
-                onChange={(e) => setMaxAccess(e.target.value)}
-                className="col-span-3"
-              />
-            </div>
-
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="is-viewable" className="text-right">
-                View in Browser
-              </Label>
-              <div className="flex items-center space-x-2 col-span-3">
-                <input
-                  id="is-viewable"
-                  type="checkbox"
-                  checked={isViewable}
-                  onChange={(e) => setIsViewable(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              <Label className="text-right">Expires in (hours)</Label>
+              <div className="col-span-3 flex items-center space-x-3">
+                <Switch
+                  id="has-expiry-limit"
+                  checked={hasExpiryLimit}
+                  onCheckedChange={setHasExpiryLimit}
                 />
-                <label htmlFor="is-viewable" className="text-sm text-gray-600">
+                <span className="text-sm text-muted-foreground">
+                  {hasExpiryLimit ? "Limited" : "No limit"}
+                </span>
+                {hasExpiryLimit && (
+                  <Input
+                    id="expires-in"
+                    type="number"
+                    min="1"
+                    max="8760" // 1 year max
+                    placeholder="24"
+                    value={expiresIn}
+                    onChange={(e) => setExpiresIn(e.target.value)}
+                    className="w-24"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">Max Access</Label>
+              <div className="col-span-3 flex items-center space-x-3">
+                <Switch
+                  id="has-access-limit"
+                  checked={hasAccessLimit}
+                  onCheckedChange={setHasAccessLimit}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {hasAccessLimit ? "Limited" : "Unlimited"}
+                </span>
+                {hasAccessLimit && (
+                  <Input
+                    id="max-access"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    placeholder="5"
+                    value={maxAccess}
+                    onChange={(e) => setMaxAccess(e.target.value)}
+                    className="w-24"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">View in Browser</Label>
+              <div className="col-span-3 flex items-center">
+                <Switch
+                  id="view-in-browser"
+                  checked={isViewable}
+                  onCheckedChange={setIsViewable}
+                />
+                <span className="ml-2 text-sm text-muted-foreground">
                   {isViewable
                     ? "Files can be viewed in browser"
                     : "Files will force download"}
-                </label>
+                </span>
               </div>
             </div>
 
             <div className="text-sm text-muted-foreground">
-              <p>• Leave empty for no expiry limit</p>
-              <p>• Leave empty for unlimited access</p>
               {itemCount > 1 && (
                 <p>• Multiple items will be shared individually</p>
               )}

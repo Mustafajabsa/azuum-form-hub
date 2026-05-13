@@ -35,11 +35,78 @@ export function ShareLinkDialog({
 
   const handleCopy = async (url: string, index: number) => {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopiedIndex(index);
-      setTimeout(() => setCopiedIndex(null), 2000);
+      console.log("Attempting to copy:", url);
+
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        console.log("Using modern clipboard API");
+        await navigator.clipboard.writeText(url);
+        setCopiedIndex(index);
+        setTimeout(() => setCopiedIndex(null), 2000);
+        return;
+      }
+
+      // Enhanced fallback for older browsers
+      console.log("Using fallback copy method");
+      const textArea = document.createElement("textarea");
+      textArea.value = url;
+      textArea.style.position = "fixed";
+      textArea.style.left = "0px";
+      textArea.style.top = "0px";
+      textArea.style.width = "1px";
+      textArea.style.height = "1px";
+      textArea.style.padding = "0";
+      textArea.style.border = "none";
+      textArea.style.outline = "none";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+
+      // Select the text
+      textArea.select();
+      textArea.setSelectionRange(0, 99999);
+
+      // Try multiple copy methods
+      let successful = false;
+      try {
+        successful = document.execCommand("copy");
+        console.log("execCommand copy result:", successful);
+      } catch (e) {
+        console.log("execCommand failed:", e);
+      }
+
+      // Try modern selection API as fallback
+      if (!successful && window.getSelection && document.createRange) {
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(textArea);
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+            successful = true;
+            console.log("Selection API copy successful");
+          }
+        } catch (e) {
+          console.log("Selection API failed:", e);
+        }
+      }
+
+      // Clean up
+      document.body.removeChild(textArea);
+
+      if (successful) {
+        setCopiedIndex(index);
+        setTimeout(() => setCopiedIndex(null), 2000);
+        console.log("Copy successful for index:", index);
+      } else {
+        console.error("All copy methods failed");
+        throw new Error("Copy command failed");
+      }
     } catch (err) {
       console.error("Failed to copy:", err);
+      // Show user-friendly error message with more details
+      const errorMsg = `Failed to copy link. Please try manually or check browser permissions. Error: ${err.message || err}`;
+      alert(errorMsg);
     }
   };
 
@@ -55,11 +122,36 @@ export function ShareLinkDialog({
     if (sharedItems && sharedItems.length > 0) {
       const allUrls = sharedItems.map((item) => item.share_url).join("\n");
       try {
-        await navigator.clipboard.writeText(allUrls);
-        setCopiedIndex(-1); // Special index for "copy all"
-        setTimeout(() => setCopiedIndex(null), 2000);
+        // Modern clipboard API
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(allUrls);
+          setCopiedIndex(-1); // Special index for "copy all"
+          setTimeout(() => setCopiedIndex(null), 2000);
+        } else {
+          // Fallback for older browsers
+          const textArea = document.createElement("textarea");
+          textArea.value = allUrls;
+          textArea.style.position = "fixed";
+          textArea.style.left = "-999999px";
+          textArea.style.top = "-999999px";
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+
+          const successful = document.execCommand("copy");
+          document.body.removeChild(textArea);
+
+          if (successful) {
+            setCopiedIndex(-1);
+            setTimeout(() => setCopiedIndex(null), 2000);
+          } else {
+            throw new Error("Copy all command failed");
+          }
+        }
       } catch (err) {
         console.error("Failed to copy all:", err);
+        // Show user-friendly error message
+        alert("Failed to copy links. Please select and copy manually.");
       }
     } else {
       handleCopy(shareUrl, 0);
@@ -78,11 +170,15 @@ export function ShareLinkDialog({
                 : "Share Link Generated"}
           </DialogTitle>
           <DialogDescription>
-            {isMasterLink && sharedItems && sharedItems.length > 1
-              ? `Your master share link for ${sharedItems.length} items is ready`
-              : sharedItems && sharedItems.length > 1
-                ? `Your shareable links for ${sharedItems.length} items are ready`
-                : `Your shareable link for <strong>${fileName}</strong> is ready`}
+            {isMasterLink && sharedItems && sharedItems.length > 1 ? (
+              `Your master share link for ${sharedItems.length} items is ready`
+            ) : sharedItems && sharedItems.length > 1 ? (
+              `Your shareable links for ${sharedItems.length} items are ready`
+            ) : (
+              <>
+                Your shareable link for <strong>{fileName}</strong> is ready
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
