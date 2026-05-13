@@ -4,3 +4,5 @@ drf-spectacular
 django-celery-beat
 djangorestframework-simplejwt
 djoser
+"django-phonenumber-field[phonenumberslite]"
+"django-phonenumber-field[phonenumbers]"

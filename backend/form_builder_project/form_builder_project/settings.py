@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -59,11 +60,19 @@ INSTALLED_APPS = [
     'accounts',
     'rest_framework_simplejwt.token_blacklist',
     'djoser',
+    "phonenumber_field",
 ]
 DJOSER = {
     'USER_ID_FIELD': 'username',
     'LOGIN_ID_FIELD': 'email',
     'PASSWORD_RESET_CONFIRM_URL': 'password-reset/{uid}/{token}',
+    'PERMISSIONS': {
+        # This restricts the 'list' view to Admin users only
+        'user_list': ['rest_framework.permissions.IsAdminUser'],
+        # Keeps 'me' and other details accessible to the owner
+        'user': ['rest_framework.permissions.IsAuthenticated'],
+        'user_me': ['rest_framework.permissions.IsAuthenticated'],
+    }
 }
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
@@ -223,3 +232,7 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=0, minute=0),  # runs every day at midnight
     }
 }
+
+# Profile image DIR
+PROFILE_PICTURES_ROOT = BASE_DIR / 'media' / 'profiles'
+os.makedirs(PROFILE_PICTURES_ROOT, exist_ok=True)

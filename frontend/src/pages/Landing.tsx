@@ -21,6 +21,29 @@ const Landing = () => {
   } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState("login");
+  // Country phone codes data
+  const countryPhoneCodes = [
+    { code: "+1", name: "United States", pattern: /^\d{10}$/ },
+    { code: "+44", name: "United Kingdom", pattern: /^\d{10,11}$/ },
+    { code: "+91", name: "India", pattern: /^[6-9]\d{9}$/ },
+    { code: "+86", name: "China", pattern: /^\d{11}$/ },
+    { code: "+81", name: "Japan", pattern: /^\d{10}$/ },
+    { code: "+49", name: "Germany", pattern: /^\d{10,11}$/ },
+    { code: "+33", name: "France", pattern: /^\d{9}$/ },
+    { code: "+39", name: "Italy", pattern: /^\d{9,10}$/ },
+    { code: "+34", name: "Spain", pattern: /^\d{9}$/ },
+    { code: "+31", name: "Netherlands", pattern: /^\d{9}$/ },
+    { code: "+61", name: "Australia", pattern: /^\d{9}$/ },
+    { code: "+7", name: "Russia", pattern: /^\d{10}$/ },
+    { code: "+55", name: "Brazil", pattern: /^\d{10,11}$/ },
+    { code: "+52", name: "Mexico", pattern: /^\d{10}$/ },
+    { code: "+82", name: "South Korea", pattern: /^\d{10}$/ },
+    { code: "+27", name: "South Africa", pattern: /^\d{9}$/ },
+    { code: "+20", name: "Egypt", pattern: /^\d{10}$/ },
+    { code: "+966", name: "Saudi Arabia", pattern: /^\d{9}$/ },
+    { code: "+971", name: "UAE", pattern: /^\d{9}$/ },
+  ];
+
   const [showContact, setShowContact] = useState(false);
   const [hasWebsite, setHasWebsite] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -29,15 +52,16 @@ const Landing = () => {
     // Shared fields
     username: "",
     password: "",
-    passwordConfirm: "",
+    password2: "",
 
-    // Signup only fields
+    // Registration fields
+    first_name: "",
+    last_name: "",
     email: "",
-    fullName: "",
-    organization: "",
-    role: "",
-    country: "",
-    website: "",
+    phone_number: "",
+    country_code: "+1",
+    role: "Project Manager",
+    storage_quota: 1000,
   });
 
   // Helper function to get user-friendly error messages
@@ -124,20 +148,22 @@ const Landing = () => {
     e.preventDefault();
 
     // Validate password confirmation
-    if (formData.password !== formData.passwordConfirm) {
-      // You might want to show an error message here
+    if (formData.password !== formData.password2) {
       console.error("Passwords do not match");
       return;
     }
 
-    // Use real authentication API
+    // Use real authentication API with all required fields
     const signupData = {
-      email: formData.email,
       username: formData.username,
+      first_name: formData.first_name,
+      last_name: formData.last_name,
+      email: formData.email,
+      phone_number: `${formData.country_code}${formData.phone_number}`,
+      role: formData.role,
       password: formData.password,
-      password_confirm: formData.passwordConfirm,
-      first_name: formData.fullName,
-      // Add other fields as needed by your API
+      password2: formData.password2,
+      storage_quota: formData.storage_quota,
     };
     register(signupData);
   };
@@ -257,42 +283,45 @@ const Landing = () => {
           <TabsContent value="signup">
             <form onSubmit={handleSignup} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="fullName"
-                  placeholder="John Doe"
-                  value={formData.fullName}
+                  id="username"
+                  type="text"
+                  placeholder="Choose a username"
+                  value={formData.username}
                   onChange={(e) =>
-                    setFormData({ ...formData, fullName: e.target.value })
+                    setFormData({ ...formData, username: e.target.value })
                   }
                   required
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="organization">Organization Name</Label>
-                <Input
-                  id="organization"
-                  placeholder="Acme Inc."
-                  value={formData.organization}
-                  onChange={(e) =>
-                    setFormData({ ...formData, organization: e.target.value })
-                  }
-                  required
-                />
-              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="first_name">First Name</Label>
+                  <Input
+                    id="first_name"
+                    placeholder="John"
+                    value={formData.first_name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, first_name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Input
-                  id="role"
-                  placeholder="e.g., Manager, Developer"
-                  value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value })
-                  }
-                  required
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Last Name</Label>
+                  <Input
+                    id="last_name"
+                    placeholder="Doe"
+                    value={formData.last_name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, last_name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -310,60 +339,72 @@ const Landing = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Choose a username"
-                  value={formData.username}
-                  onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
-                  }
-                  required
-                />
+                <Label htmlFor="phone_number">Phone Number</Label>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.country_code}
+                    onChange={(e) =>
+                      setFormData({ ...formData, country_code: e.target.value })
+                    }
+                    className="w-24 p-2 border-border bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    required
+                  >
+                    {countryPhoneCodes.map((country) => (
+                      <option key={country.code} value={country.code}>
+                        {country.code}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    id="phone_number"
+                    type="tel"
+                    placeholder="1234567890"
+                    value={formData.phone_number}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone_number: e.target.value })
+                    }
+                    required
+                    className="flex-1"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="country">Country</Label>
-                <Input
-                  id="country"
-                  placeholder="Your country"
-                  value={formData.country}
+                <Label htmlFor="role">Role</Label>
+                <select
+                  id="role"
+                  value={formData.role}
                   onChange={(e) =>
-                    setFormData({ ...formData, country: e.target.value })
+                    setFormData({ ...formData, role: e.target.value })
+                  }
+                  className="w-full p-2 border rounded-md"
+                  required
+                >
+                  <option value="user">User</option>
+                  <option value="Project Manager">Project Manager</option>
+                  <option value="Finance">Finance</option>
+                  <option value="Program">Program</option>
+                  <option value="admin">Admin</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="storage_quota">Storage Quota (MB)</Label>
+                <Input
+                  id="storage_quota"
+                  type="number"
+                  placeholder="1000"
+                  value={formData.storage_quota}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      storage_quota: parseInt(e.target.value) || 0,
+                    })
                   }
                   required
                 />
               </div>
-
-              <div className="flex items-center space-x-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="hasWebsite"
-                  checked={hasWebsite}
-                  onChange={(e) => setHasWebsite(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <Label htmlFor="hasWebsite" className="text-sm">
-                  Does your organization have a website?
-                </Label>
-              </div>
-
-              {hasWebsite && (
-                <div className="space-y-2">
-                  <Label htmlFor="website">Website URL</Label>
-                  <Input
-                    id="website"
-                    type="url"
-                    placeholder="https://example.com"
-                    value={formData.website}
-                    onChange={(e) =>
-                      setFormData({ ...formData, website: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -399,17 +440,17 @@ const Landing = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="passwordConfirm">Confirm Password</Label>
+                <Label htmlFor="password2">Confirm Password</Label>
                 <div className="relative">
                   <Input
-                    id="passwordConfirm"
+                    id="password2"
                     type={showPasswordConfirm ? "text" : "password"}
                     placeholder="Confirm your password"
-                    value={formData.passwordConfirm}
+                    value={formData.password2}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        passwordConfirm: e.target.value,
+                        password2: e.target.value,
                       })
                     }
                     required

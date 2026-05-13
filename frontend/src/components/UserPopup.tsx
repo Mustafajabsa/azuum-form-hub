@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, Circle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { authService } from "@/api/services/authService";
 import {
   Popover,
   PopoverContent,
@@ -16,7 +17,32 @@ import { Badge } from "@/components/ui/badge";
 
 export function UserPopup() {
   const [isOpen, setIsOpen] = useState(false);
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(
+    null,
+  );
   const { user } = useAuth();
+
+  // Fetch profile picture on component mount
+  useEffect(() => {
+    const fetchProfilePicture = async () => {
+      try {
+        // First get profile data to check if picture exists
+        const profileData = await authService.getProfile();
+
+        if (profileData.profile?.picture_url) {
+          // If picture exists, fetch it with authentication
+          const pictureUrl = await authService.getProfilePicture();
+          if (pictureUrl) {
+            setProfilePictureUrl(pictureUrl);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching profile picture:", error);
+      }
+    };
+
+    fetchProfilePicture();
+  }, []);
 
   if (!user) return null;
 
@@ -43,11 +69,20 @@ export function UserPopup() {
                 aria-label="User profile"
               >
                 <div className="relative">
-                  <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="text-xs font-medium text-primary">
-                      {initials}
-                    </span>
-                  </div>
+                  {profilePictureUrl ? (
+                    <img
+                      src={profilePictureUrl}
+                      alt="Profile"
+                      className="w-5 h-5 rounded-full object-cover"
+                      onError={() => setProfilePictureUrl(null)}
+                    />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="text-xs font-medium text-primary">
+                        {initials}
+                      </span>
+                    </div>
+                  )}
                   <Circle className="absolute -bottom-0.5 -right-0.5 w-2 h-2 fill-green-500 text-green-500" />
                 </div>
                 <span className="truncate text-sm">{displayName}</span>
@@ -62,11 +97,20 @@ export function UserPopup() {
           <div className="p-4 space-y-4">
             {/* User Header */}
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-lg font-medium text-primary">
-                  {initials}
-                </span>
-              </div>
+              {profilePictureUrl ? (
+                <img
+                  src={profilePictureUrl}
+                  alt="Profile"
+                  className="w-12 h-12 rounded-full object-cover"
+                  onError={() => setProfilePictureUrl(null)}
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="text-lg font-medium text-primary">
+                    {initials}
+                  </span>
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <h3 className="font-medium truncate">{displayName}</h3>
                 <p className="text-sm text-muted-foreground truncate">
