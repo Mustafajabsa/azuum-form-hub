@@ -133,9 +133,9 @@ const Landing = () => {
     }
   };
 
-  // Redirect authenticated users to dashboard
+  // Redirect authenticated users to storage
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/storage" replace />;
   }
 
   const handleLogin = (e: React.FormEvent) => {
