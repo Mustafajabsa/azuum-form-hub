@@ -33,26 +33,26 @@ import {
 } from "@/components/ui/tooltip";
 
 const menuItems = [
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: LayoutDashboard,
-    adminOnly: true,
-  },
+  // {
+  //   title: "Dashboard",
+  //   url: "/dashboard",
+  //   icon: LayoutDashboard,
+  //   adminOnly: true,
+  // },
   { title: "Storage", url: "/storage", icon: HardDrive, adminOnly: false },
-  { title: "Forms", url: "/forms", icon: FileText, adminOnly: false },
-  {
-    title: "Filled Forms",
-    url: "/filled-forms",
-    icon: FolderOpen,
-    adminOnly: false,
-  },
-  {
-    title: "Sign",
-    url: "/sign",
-    icon: PenTool,
-    adminOnly: false,
-  },
+  // { title: "Forms", url: "/forms", icon: FileText, adminOnly: false },
+  // {
+  //   title: "Filled Forms",
+  //   url: "/filled-forms",
+  //   icon: FolderOpen,
+  //   adminOnly: false,
+  // },
+  // {
+  //   title: "Sign",
+  //   url: "/sign",
+  //   icon: PenTool,
+  //   adminOnly: false,
+  // },
   { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
 ];
 

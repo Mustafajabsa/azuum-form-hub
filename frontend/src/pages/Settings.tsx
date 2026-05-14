@@ -125,7 +125,7 @@ const Settings = () => {
     first_name: "",
     last_name: "",
     email: "",
-    phone_number: "",
+    phone: "",
     country_code: "+1",
     role: "Project Manager",
     storage_quota: 1000,
@@ -458,7 +458,7 @@ const Settings = () => {
         }
 
         // Handle phone number comparison
-        const currentPhone = `${currentUser.country_code}${currentUser.phone_number}`;
+        const currentPhone = `${currentUser.country_code}${currentUser.phone}`;
         const originalPhone = originalUser?.profile?.phone || "";
         if (currentPhone !== originalPhone) {
           updateData.phone = currentPhone;
@@ -502,7 +502,7 @@ const Settings = () => {
           first_name: currentUser.first_name,
           last_name: currentUser.last_name,
           email: currentUser.email,
-          phone_number: `${currentUser.country_code}${currentUser.phone_number}`,
+          phone: `${currentUser.country_code}${currentUser.phone}`,
           role: currentUser.role,
           storage_quota: currentUser.storage_quota,
           password: currentUser.password,
@@ -543,7 +543,7 @@ const Settings = () => {
         first_name: "",
         last_name: "",
         email: "",
-        phone_number: "",
+        phone: "",
         country_code: "+1",
         role: "Project Manager",
         storage_quota: 1000,
@@ -617,7 +617,7 @@ const Settings = () => {
         first_name: userDetails.first_name || "",
         last_name: userDetails.last_name || "",
         email: userDetails.email,
-        phone_number: localNumber,
+        phone: localNumber,
         country_code: countryCode,
         role: userDetails.role,
         storage_quota: userDetails.storage_quota || 1000,
@@ -654,7 +654,7 @@ const Settings = () => {
         first_name: user.first_name || "",
         last_name: user.last_name || "",
         email: user.email,
-        phone_number: localNumber,
+        phone: localNumber,
         country_code: countryCode,
         role: user.role,
         storage_quota: user.storage_quota || 1000,
@@ -1171,7 +1171,7 @@ const Settings = () => {
                           first_name: "",
                           last_name: "",
                           email: "",
-                          phone_number: "",
+                          phone: "",
                           country_code: "+1",
                           role: "Project Manager",
                           storage_quota: 1000,
@@ -1286,7 +1286,7 @@ const Settings = () => {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="phone_number">
+                          <Label htmlFor="phone">
                             Phone Number <span className="text-red-500">*</span>
                           </Label>
                           <div className="flex gap-2">
@@ -1308,13 +1308,13 @@ const Settings = () => {
                               ))}
                             </select>
                             <Input
-                              id="phone_number"
+                              id="phone"
                               type="tel"
-                              value={currentUser.phone_number}
+                              value={currentUser.phone}
                               onChange={(e) =>
                                 setCurrentUser({
                                   ...currentUser,
-                                  phone_number: e.target.value,
+                                  phone: e.target.value,
                                 })
                               }
                               placeholder="1234567890"
@@ -1441,7 +1441,7 @@ const Settings = () => {
                                 first_name: "",
                                 last_name: "",
                                 email: "",
-                                phone_number: "",
+                                phone: "",
                                 country_code: "+1",
                                 role: "Project Manager",
                                 storage_quota: 1000,

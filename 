@@ -1,0 +1,82 @@
+*   [33md7fb2df1[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m Merge pull request #11 from Mustafajabsa/develop
+[31m|[m[32m\[m  
+[31m|[m * [33m2120b80f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdevelop[m[33m, [m[1;31morigin/develop[m[33m)[m feat(auth/users): added users features, authorizations, and activated the users list on the settings. I worked on the settings, and activated all the options.
+[31m|[m[31m/[m  
+* [33m0b1bf4a8[m Fix dark mode styling for download popups and progress bars
+* [33m0a2fb5e6[m Add download option to more menu for files and favorites
+* [33m77f1ef91[m feat: implement file management features and UI improvements
+*   [33ma6a61216[m Merge branch 'main' of github.com:Mustafajabsa/azuum-form-hub
+[33m|[m[34m\[m  
+[33m|[m *   [33ma1e355d8[m Merge pull request #10 from Mustafajabsa/develop
+[33m|[m [35m|[m[36m\[m  
+[33m|[m * [36m\[m   [33md0470ffd[m Merge pull request #9 from Mustafajabsa/develop
+[33m|[m [1;31m|[m[1;32m\[m [36m\[m  
+* [1;31m|[m [1;32m\[m [36m\[m   [33m58a359dc[m Merge develop into main - Add document sharing, signing features and UI improvements
+[1;31m|[m[36m\[m [1;31m\[m [1;32m\[m [36m\[m  
+[1;31m|[m [36m|[m[1;31m/[m [1;32m/[m [36m/[m  
+[1;31m|[m[1;31m/[m[36m|[m [1;32m|[m [36m/[m   
+[1;31m|[m [36m|[m [1;32m|[m[36m/[m    
+[1;31m|[m [36m|[m[36m/[m[1;32m|[m     
+[1;31m|[m * [1;32m|[m [33me56590f0[m Fix React import in Share.tsx and add new features including document sharing and signing
+[1;31m|[m [1;32m|[m[1;32m/[m  
+[1;31m|[m * [33m5ff6a326[m Add user profile popup and forgot password functionality
+[1;31m|[m * [33mafbd7aa6[m cleaned up the api endpoints at the backend, and configured the login at the frontend
+[1;31m|[m * [33m23bc5150[m feat: Prepared the fronend for the backend API integrations.
+* [1;34m|[m [33m9f6e8f35[m Merge pull request #8 from Mustafajabsa/develop
+[1;35m|[m[1;34m\[m[1;34m|[m 
+[1;35m|[m * [33ma3c17c63[m Edit: Edited the fronend files to be errors free
+* [1;36m|[m [33m2cbf5105[m Merge pull request #7 from Mustafajabsa/feature/ratelimiting
+[31m|[m[1;36m\[m[1;36m|[m 
+[31m|[m * [33m03662d35[m feat(ratelimit): added a rate limiting feature and tested the login and user creation
+[31m|[m[31m/[m  
+*   [33m0e6a4192[m Merge pull request #6 from Mustafajabsa/feature/auth
+[33m|[m[34m\[m  
+[33m|[m * [33md9e5b621[m feat(Authentication & Authorization): add new feature of Authentication & Authorization to the backend
+[33m|[m[33m/[m  
+* [33ma451d9ae[m Chore: Added the submissions app.
+* [33md2dd6163[m cleanup: removed submissions app, venv folder, and updated gitignore
+* [33m79e076fc[m[33m ([m[1;31morigin/phase4-production[m[33m)[m modified the git ignore, and deactivated the other modules but the storage.
+* [33mb8d8d281[m updated the backend with the ready backend that has the storage APIS completed
+* [33m8a7ab4b4[m Updated the storage with the new UI
+* [33m0fdde4b6[m chore: completed the APIs documentation of the project
+* [33mca536fe2[m fix: fixed the storage app, and made for it one unified API that accepts both files and folders.
+* [33m55f30b32[m created and tested the storage APIs. 2 issues are yet to be resolved.
+* [33m0a06aec8[m deleted the unuseful apps.
+* [33m33d80cf8[m deleted the unuseful test files related to the previous development branches.
+[34m|[m * [33me46bb434[m[33m ([m[1;35mrefs/stash[m[33m)[m On phase4-production: "Phase 5 cleanup - remove test files and restore package changes"
+[34m|[m[34m/[m[36m|[m 
+[34m|[m * [33m065ac815[m index on phase4-production: 615a5255 Complete Phase 4: Production Readiness & Security
+[34m|[m[34m/[m  
+* [33m615a5255[m[33m ([m[1;31morigin/backend[m[33m)[m Complete Phase 4: Production Readiness & Security
+* [33m48349917[m[33m ([m[1;31morigin/phase3-advanced-features[m[33m)[m Complete Phase 3: Advanced Features + Phase 4: Performance Optimization
+*   [33m25af9bc7[m Merge branch 'phase2-storage' into backend
+[1;31m|[m[1;32m\[m  
+[1;31m|[m * [33mb8d9c30d[m[33m ([m[1;31morigin/phase2-storage[m[33m)[m Phase 2: Complete Storage App Implementation
+* [1;32m|[m [33m1a61999a[m chore: Add backend-env to gitignore
+[1;32m|[m[1;32m/[m  
+* [33m20ac4b05[m[33m ([m[1;31morigin/phase1-core-foundation[m[33m, [m[1;31morigin/backend-initial-setup[m[33m)[m fix: Update configuration for testing and deployment
+* [33m55aed1e4[m feat: Add API documentation and comprehensive setup validation
+* [33mcae131a1[m feat: Create submissions app with PDF generation
+* [33m958b291d[m feat: Create forms app with comprehensive form management
+* [33m00a30ae5[m feat: Create accounts app with custom user model and authentication
+* [33m64bb680f[m feat: Configure Django project with DRF, JWT, and CORS
+* [33m7ab8ae33[m chore: add ESLint configuration for TypeScript and React
+* [33m956184d3[m edited the readme file, added that the drag and drop functionality is not used now
+* [33m4d001f4f[m chore: add Python dependencies
+* [33mf790f15f[m chore: ignore virtual environment and cache files
+* [33mbfb63e8b[m Initial Django setup
+* [33mafd65009[m[33m ([m[1;31morigin/frontend[m[33m)[m updated the folder readme file, and updated the folders structure
+* [33mc65b6902[m I edited the folders structure to add one folder for the current frontend, and another folder for the Django backend
+* [33m4a23e4cb[m I have added a search bar to the Forms module, and date ranage option left to the new project button
+* [33m7b6a3edc[m fixed the issue of the dark mode
+* [33m5eee360e[m added the dark mode funtionality
+* [33m5178a88b[m deleted the old logo
+* [33m6e9ba3da[m updated the logo to the official logo of AZUUM
+*   [33me34a1155[m Merge pull request #2 from Mustafajabsa/storage-modify
+[1;33m|[m[1;34m\[m  
+[1;33m|[m * [33mb1d88b87[m modified the storage page, and added a search bar, resizing funtionality, checkbox for delete all, popup when selected two or more
+* [1;34m|[m [33m8a948dc1[m Merge pull request #1 from Mustafajabsa/readme-edit
+[1;35m|[m[1;34m\[m[1;34m|[m 
+[1;35m|[m * [33m6641efe0[m[33m ([m[1;31morigin/readme-edit[m[33m)[m updated the readme file
+[1;35m|[m[1;35m/[m  
+* [33m702c0c75[m the latest updates of the app frontend
